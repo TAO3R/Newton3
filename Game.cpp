@@ -78,7 +78,10 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 Game::Game() : mt(0x15466666) {
 	//test object in the middle of the arena:
 	objects.emplace_back();
-	objects.back().sprite = SpriteId::Hands;
+	Object &hands = objects.back();
+	hands.sprite = SpriteId::Hands;
+	//collider is the circle inside the sprite (hands.png is square, so height == width):
+	hands.pp.collider = PhysicsEngine::CircleCollider{ 0.5f * hands.width };
 }
 
 Player *Game::spawn_player() {
@@ -97,6 +100,9 @@ Player *Game::spawn_player() {
 	player.color = glm::normalize(player.color);
 
 	player.name = "Player " + std::to_string(next_player_number++);
+
+	//collider matches the player's circle:
+	player.pp.collider = PhysicsEngine::CircleCollider{ PlayerRadius };
 
 	return &player;
 }
@@ -186,6 +192,39 @@ void Game::update(float elapsed) {
 		if (p1.position.y > ArenaMax.y - PlayerRadius) {
 			p1.position.y = ArenaMax.y - PlayerRadius;
 			p1.velocity.y =-std::abs(p1.velocity.y);
+		}
+	}
+
+	{ //physics: step every player and object, keeping them inside the arena
+		std::vector< PhysicsEngine::Body > bodies;
+		for (auto &p : players) bodies.push_back({&p.position, &p.pp});
+		for (auto &o : objects) bodies.push_back({&o.position, &o.pp});
+
+		//arena walls: clamp the collider inside and bounce off, scaled by the body's elasticity
+		auto confine = [](PhysicsEngine::Body const &b) {
+			if (b.pp->inv_mass() == 0.0f) return; //static / kinematic aren't pushed by walls either
+			glm::vec2 &pos = *b.position;
+			glm::vec2 &vel = b.pp->velocity;
+			glm::vec2 half = PhysicsEngine::half_extent(b.pp->collider);
+			glm::vec2 lo = ArenaMin + half;
+			glm::vec2 hi = ArenaMax - half;
+			for (int a = 0; a < 2; ++a) {
+				if (pos[a] < lo[a]) {
+					pos[a] = lo[a];
+					vel[a] = std::abs(vel[a]) * b.pp->elasticity;
+				} else if (pos[a] > hi[a]) {
+					pos[a] = hi[a];
+					vel[a] =-std::abs(vel[a]) * b.pp->elasticity;
+				}
+			}
+		};
+
+		std::vector< PhysicsEngine::Grab > const grabs;
+		std::vector< PhysicsEngine::Throw > throws;
+		int steps = int(std::round(elapsed / PhysicsEngine::physics_dt));
+		for (int s = 0; s < steps; ++s) {
+			PhysicsEngine::step(bodies, grabs, throws);
+			for (auto const &b : bodies) confine(b);
 		}
 	}
 

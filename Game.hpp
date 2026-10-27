@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include "Physics.hpp"
 
 #include <string>
 #include <list>
@@ -54,6 +55,9 @@ struct Player {
 
 	//sprite used to draw this player:
 	SpriteId sprite = SpriteId::Default;
+
+	// physics
+	PhysicsEngine::PhysicsProp pp;
 };
 
 //state of one non-player object in the game (sent from server):
@@ -66,6 +70,9 @@ struct Object {
 	float rotation = 0.0f; //radians, around the z-axis (out of the screen)
 	glm::vec2 scale = glm::vec2(1.0f, 1.0f);
 	float width = 0.12f;	// world-space width
+
+	// physics
+	PhysicsEngine::PhysicsProp pp;
 };
 
 struct Game {

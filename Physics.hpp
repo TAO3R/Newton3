@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <variant>
 #include <vector>
 
 struct PhysicsEngine
@@ -18,18 +19,32 @@ struct PhysicsEngine
         Count = 3
     };
 
+    // collider shapes, sizes in world-space units
+    struct CircleCollider
+    {
+        float radius = 0.06f;
+    };
+
+    struct BoxCollider
+    {
+        glm::vec2 half_size = glm::vec2(0.06f); // axis-aligned
+    };
+
+    // exactly one shape at a time; the first alternative is what a default-constructed collider holds
+    using Collider = std::variant< CircleCollider, BoxCollider >;
+
+    // half size of the axis-aligned box around the collider
+    static glm::vec2 half_extent(Collider const &collider);
+
     struct PhysicsProp
     {
         MovementType type = MovementType::Dynamic;
-        
+
         float mass = 1.0f;
         float elasticity = 0.8f;
         glm::vec2 velocity = glm::vec2(0.f);
 
-        struct BoxCollider
-        {
-            glm::vec2 half_size = glm::vec2(0.06f); // world-space units, axis-aligned
-        } box;
+        Collider collider;
 
         // for static and kinematic collision
         float inv_mass() const
