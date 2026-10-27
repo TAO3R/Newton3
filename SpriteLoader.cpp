@@ -9,6 +9,8 @@ SpriteLoader::SpriteLoader() {
 }
 
 SpriteLoader::~SpriteLoader() {
+	// TODO:: Release opengl resource
+
 }
 
 Sprite SpriteLoader::load_sprite(std::string name) {
@@ -39,7 +41,8 @@ void SpriteLoader::upload_sprites() {
 
 		s.tex = tex;
 
-		//clear pixel data on cpu
+		// TODO: clear pixel data on cpu
+		
 	}
 
 	GL_ERRORS();

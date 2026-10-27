@@ -65,6 +65,7 @@ struct Object {
 	glm::vec2 position = glm::vec2(0.0f, 0.0f);
 	float rotation = 0.0f; //radians, around the z-axis (out of the screen)
 	glm::vec2 scale = glm::vec2(1.0f, 1.0f);
+	float width = 0.12f;	// world-space width
 };
 
 struct Game {

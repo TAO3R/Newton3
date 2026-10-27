@@ -232,6 +232,7 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(object.rotation);
 		connection.send(object.scale);
 		connection.send(object.sprite);
+		connection.send(object.width);
 	};
 
 	//object count:
@@ -301,6 +302,7 @@ bool Game::recv_state_message(Connection *connection_) {
 		read(&object.rotation);
 		read(&object.scale);
 		read(&object.sprite);
+		read(&object.width);
 	}
 
 	if (at != size) throw std::runtime_error("Trailing data in state message.");
