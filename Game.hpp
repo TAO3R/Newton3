@@ -87,8 +87,8 @@ struct Game {
 	inline static constexpr float Tick = 1.0f / 30.0f;
 
 	//arena size:
-	inline static constexpr glm::vec2 ArenaMin = glm::vec2(-0.75f, -1.0f);
-	inline static constexpr glm::vec2 ArenaMax = glm::vec2( 0.75f,  1.0f);
+	inline static constexpr glm::vec2 ArenaMin = glm::vec2(-1.6f, -1.0f);
+	inline static constexpr glm::vec2 ArenaMax = glm::vec2( 1.6f,  1.0f);
 
 	//player constants:
 	inline static constexpr float PlayerRadius = 0.06f;
