@@ -1,11 +1,13 @@
 #include "PlayMode.hpp"
 
 #include "DrawLines.hpp"
+#include "ColorTextureProgram.hpp"
 #include "gl_errors.hpp"
 #include "data_path.hpp"
 #include "hex_dump.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/string_cast.hpp>
 
@@ -13,6 +15,67 @@
 #include <array>
 
 PlayMode::PlayMode(Client &client_) : client(client_) {
+
+	{ //upload sprite textures (order must match SpriteId):
+		Sprite s = sl.load_sprite("default.png");
+		sl.add_sprite(s);
+		s = sl.load_sprite("hands.png");
+		sl.add_sprite(s);
+		sl.upload_sprites();
+	}
+
+	glGenBuffers(1, &vbo);
+
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+	//unit quad centered on the origin (two triangles); each sprite is placed via CLIP_FROM_OBJECT:
+	SpriteVertex const quad[6] = {
+		{ glm::vec2(-0.5f,-0.5f), glm::vec2(0.0f, 0.0f), glm::u8vec4(0xff) },
+		{ glm::vec2( 0.5f,-0.5f), glm::vec2(1.0f, 0.0f), glm::u8vec4(0xff) },
+		{ glm::vec2( 0.5f, 0.5f), glm::vec2(1.0f, 1.0f), glm::u8vec4(0xff) },
+		{ glm::vec2(-0.5f,-0.5f), glm::vec2(0.0f, 0.0f), glm::u8vec4(0xff) },
+		{ glm::vec2( 0.5f, 0.5f), glm::vec2(1.0f, 1.0f), glm::u8vec4(0xff) },
+		{ glm::vec2(-0.5f, 0.5f), glm::vec2(0.0f, 1.0f), glm::u8vec4(0xff) },
+	};
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+
+	glVertexAttribPointer(
+		color_texture_program->Position_vec4,
+		2,
+		GL_FLOAT,
+		GL_FALSE,
+		sizeof(SpriteVertex),
+		(GLbyte *)0 + offsetof(SpriteVertex, position)
+	);
+	glEnableVertexAttribArray(color_texture_program->Position_vec4);
+
+	glVertexAttribPointer(
+		color_texture_program->TexCoord_vec2,
+		2,
+		GL_FLOAT,
+		GL_FALSE,
+		sizeof(SpriteVertex),
+		(GLbyte *)0 + offsetof(SpriteVertex, texCoord)
+	);
+	glEnableVertexAttribArray(color_texture_program->TexCoord_vec2);
+
+	glVertexAttribPointer(
+		color_texture_program->Color_vec4,
+		4,
+		GL_UNSIGNED_BYTE,
+		GL_TRUE,
+		sizeof(SpriteVertex),
+		(GLbyte *)0 + offsetof(SpriteVertex, color)
+	);
+	glEnableVertexAttribArray(color_texture_program->Color_vec4);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glBindVertexArray(0);
+
+	GL_ERRORS();
 }
 
 PlayMode::~PlayMode() {
@@ -131,6 +194,38 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		0.0f, 0.0f, 1.0f, 0.0f,
 		0.0f, 0.0f, 0.0f, 1.0f
 	);
+
+	{ //draw sprites (before lines, so lines and names end up on top):
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		glUseProgram(color_texture_program->program);
+		glBindVertexArray(vao);
+		glActiveTexture(GL_TEXTURE0);
+
+		for (auto const &object : game.objects) {
+			if (size_t(object.sprite) >= sl.sprites.size()) continue; //bad id from server
+			Sprite const &sprite = sl.sprites[size_t(object.sprite)];
+
+			//world-space size: one player diameter tall, width follows the image's aspect ratio:
+			float height = 2.0f * Game::PlayerRadius;
+			float width = height * float(sprite.size.x) / float(sprite.size.y);
+
+			glm::mat4 clip_from_object = world_to_clip
+				* glm::translate(glm::mat4(1.0f), glm::vec3(object.position, 0.0f))
+				* glm::rotate(glm::mat4(1.0f), object.rotation, glm::vec3(0.0f, 0.0f, 1.0f))
+				* glm::scale(glm::mat4(1.0f), glm::vec3(width * object.scale.x, height * object.scale.y, 1.0f));
+			glUniformMatrix4fv(color_texture_program->CLIP_FROM_OBJECT_mat4, 1, GL_FALSE, glm::value_ptr(clip_from_object));
+
+			glBindTexture(GL_TEXTURE_2D, sprite.tex);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
+
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glBindVertexArray(0);
+		glUseProgram(0);
+		glDisable(GL_BLEND);
+	}
 
 	{
 		DrawLines lines(world_to_clip);

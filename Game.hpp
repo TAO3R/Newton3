@@ -18,6 +18,13 @@ enum class Message : uint8_t {
 	//...
 };
 
+//which sprite to draw (index into the client's loaded sprites):
+enum class SpriteId : uint8_t {
+	Default = 0,
+	Hands   = 1,
+	Count   = 2
+};
+
 //used to represent a control input:
 struct Button {
 	uint8_t downs = 0; //times the button has been pressed
@@ -44,12 +51,28 @@ struct Player {
 
 	glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
 	std::string name = "";
+
+	//sprite used to draw this player:
+	SpriteId sprite = SpriteId::Default;
+};
+
+//state of one non-player object in the game (sent from server):
+struct Object {
+	//sprite used to draw this object:
+	SpriteId sprite = SpriteId::Default;
+
+	//transform:
+	glm::vec2 position = glm::vec2(0.0f, 0.0f);
+	float rotation = 0.0f; //radians, around the z-axis (out of the screen)
+	glm::vec2 scale = glm::vec2(1.0f, 1.0f);
 };
 
 struct Game {
 	std::list< Player > players; //(using list so they can have stable addresses)
 	Player *spawn_player(); //add player the end of the players list (may also, e.g., play some spawn anim)
 	void remove_player(Player *); //remove player from game (may also, e.g., play some despawn anim)
+
+	std::list< Object > objects; //non-player objects
 
 	std::mt19937 mt; //used for spawning players
 	uint32_t next_player_number = 1; //used for naming players
