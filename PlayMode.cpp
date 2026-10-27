@@ -170,15 +170,6 @@ void PlayMode::update(float elapsed) {
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
-	static std::array< glm::vec2, 16 > const circle = [](){
-		std::array< glm::vec2, 16 > ret;
-		for (uint32_t a = 0; a < ret.size(); ++a) {
-			float ang = a / float(ret.size()) * 2.0f * float(M_PI);
-			ret[a] = glm::vec2(std::cos(ang), std::sin(ang));
-		}
-		return ret;
-	}();
-
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glDisable(GL_DEPTH_TEST);
@@ -270,7 +261,11 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			};
 
 			//Escape chamber
-			draw_prop(MapSprite::Chamber, glm::vec2(-1.35f, 0.0f), 2.5f);
+			draw_prop(
+				MapSprite::Chamber,
+				Game::EscapePosition,
+				Game::EscapeHeight / (2.0f * Game::PlayerRadius)
+			);
 			for (float side : {-1.0f, 1.0f}) {
 				draw_prop(MapSprite::Cart, glm::vec2(0.85f, side * 0.65f), 1.3f);
 				draw_prop(MapSprite::Turbine, glm::vec2(-0.35f, side * 0.45f), 1.8f);
@@ -288,54 +283,24 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	{
 		DrawLines lines(world_to_clip);
 
-		//Convert world-space labels to the text renderer's top-left pixel coordinates.
-		auto draw_text = [&](glm::vec2 const &at, std::string const &text, float height) {
-			auto found = text_cache.find(text);
-			if (found == text_cache.end()) {
-				found = text_cache.emplace(text, text_renderer.make_text(text)).first;
-			}
-			TextTexture const &texture = found->second;
-			if (texture.height == 0) return;
+		{ //boarding area outline for checking placement:
+			glm::vec2 min = Game::EscapeAreaMin;
+			glm::vec2 max = Game::EscapeAreaMax;
+			glm::u8vec4 color(0x60, 0xc8, 0xdf, 0xff);
 
-			glm::vec4 clip = world_to_clip * glm::vec4(at, 0.0f, 1.0f);
-			float pixel_height = height * scale * float(drawable_size.y) * 0.5f;
-			glm::vec2 position(
-				(clip.x * 0.5f + 0.5f) * float(drawable_size.x),
-				(0.5f - clip.y * 0.5f) * float(drawable_size.y) - pixel_height
-			);
-			text_renderer.draw_text(texture, position, pixel_height / float(texture.height), glm::vec3(1.0f), drawable_size);
-		};
+			lines.draw(glm::vec3(min.x, min.y, 0.0f), glm::vec3(max.x, min.y, 0.0f), color);
+			lines.draw(glm::vec3(max.x, min.y, 0.0f), glm::vec3(max.x, max.y, 0.0f), color);
+			lines.draw(glm::vec3(max.x, max.y, 0.0f), glm::vec3(min.x, max.y, 0.0f), color);
+			lines.draw(glm::vec3(min.x, max.y, 0.0f), glm::vec3(min.x, min.y, 0.0f), color);
+		}
+
 
 		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
 		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
 		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
 		lines.draw(glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
 
-		for (auto const &player : game.players) {
-			glm::u8vec4 col = glm::u8vec4(player.color.x*255, player.color.y*255, player.color.z*255, 0xff);
-			if (&player == &game.players.front()) {
-				//mark current player (which server sends first):
-				lines.draw(
-					glm::vec3(player.position + Game::PlayerRadius * glm::vec2(-0.5f,-0.5f), 0.0f),
-					glm::vec3(player.position + Game::PlayerRadius * glm::vec2( 0.5f, 0.5f), 0.0f),
-					col
-				);
-				lines.draw(
-					glm::vec3(player.position + Game::PlayerRadius * glm::vec2(-0.5f, 0.5f), 0.0f),
-					glm::vec3(player.position + Game::PlayerRadius * glm::vec2( 0.5f,-0.5f), 0.0f),
-					col
-				);
-			}
-			for (uint32_t a = 0; a < circle.size(); ++a) {
-				lines.draw(
-					glm::vec3(player.position + Game::PlayerRadius * circle[a], 0.0f),
-					glm::vec3(player.position + Game::PlayerRadius * circle[(a+1)%circle.size()], 0.0f),
-					col
-				);
-			}
 
-			draw_text(player.position + glm::vec2(0.0f, -0.1f + Game::PlayerRadius), player.name, 0.09f);
-		}
 	}
 	GL_ERRORS();
 }
