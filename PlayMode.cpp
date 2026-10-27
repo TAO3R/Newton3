@@ -14,7 +14,7 @@
 #include <random>
 #include <array>
 
-PlayMode::PlayMode(Client &client_) : client(client_) {
+PlayMode::PlayMode(Client &client_) : client(client_), text_renderer(data_path("Outfit-Regular.ttf")) {
 
 	{ //upload sprite textures (order must match SpriteId):
 		for (auto name : {"default.png", "hands.png", "cart.png", "pc.png", "probe.png", "turbine.png", "cryosleep_chamber.png"}) {
@@ -79,6 +79,9 @@ PlayMode::PlayMode(Client &client_) : client(client_) {
 }
 
 PlayMode::~PlayMode() {
+	for (auto &entry : text_cache) {
+		text_renderer.destroy_text(entry.second);
+	}
 }
 
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
@@ -285,17 +288,22 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	{
 		DrawLines lines(world_to_clip);
 
-		//helper:
-		auto draw_text = [&](glm::vec2 const &at, std::string const &text, float H) {
-			lines.draw_text(text,
-				glm::vec3(at.x, at.y, 0.0),
-				glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-				glm::u8vec4(0x00, 0x00, 0x00, 0x00));
-			float ofs = (1.0f / scale) / drawable_size.y;
-			lines.draw_text(text,
-				glm::vec3(at.x + ofs, at.y + ofs, 0.0),
-				glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-				glm::u8vec4(0xff, 0xff, 0xff, 0x00));
+		//Convert world-space labels to the text renderer's top-left pixel coordinates.
+		auto draw_text = [&](glm::vec2 const &at, std::string const &text, float height) {
+			auto found = text_cache.find(text);
+			if (found == text_cache.end()) {
+				found = text_cache.emplace(text, text_renderer.make_text(text)).first;
+			}
+			TextTexture const &texture = found->second;
+			if (texture.height == 0) return;
+
+			glm::vec4 clip = world_to_clip * glm::vec4(at, 0.0f, 1.0f);
+			float pixel_height = height * scale * float(drawable_size.y) * 0.5f;
+			glm::vec2 position(
+				(clip.x * 0.5f + 0.5f) * float(drawable_size.x),
+				(0.5f - clip.y * 0.5f) * float(drawable_size.y) - pixel_height
+			);
+			text_renderer.draw_text(texture, position, pixel_height / float(texture.height), glm::vec3(1.0f), drawable_size);
 		};
 
 		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));

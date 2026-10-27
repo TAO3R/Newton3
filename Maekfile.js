@@ -26,6 +26,7 @@ const NEST_LIBS = `../nest-libs/${maek.OS}`;
 if (maek.OS === "windows") {
 	maek.options.CPPFlags.push(
 		`/O2`, //optimize
+		`/utf-8`, //read source and library headers as UTF-8
 		`/D_USE_MATH_DEFINES`, //make sure M_PI exists
 		//include paths for nest libraries:
 		`/I${NEST_LIBS}/SDL3/include`,
@@ -152,6 +153,7 @@ if (maek.OS === 'windows') {
 const client_names = [
 	maek.CPP('client.cpp'),
 	maek.CPP('PlayMode.cpp'),
+	maek.CPP('TextRenderer.cpp'),
 	maek.CPP('LitColorTextureProgram.cpp'),
 	maek.CPP('ColorTextureProgram.cpp'),
 	maek.CPP('Sound.cpp'),
