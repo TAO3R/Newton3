@@ -3,6 +3,9 @@
 #include "Connection.hpp"
 #include "Game.hpp"
 #include "SpriteLoader.hpp"
+#include "TextRenderer.hpp"
+
+#include <map>
 
 #include <glm/glm.hpp>
 
@@ -31,6 +34,10 @@ struct PlayMode : Mode {
 
 	//connection to server:
 	Client &client;
+
+	//Cached Outfit text textures, shared by scene labels and future UI.
+	TextRenderer text_renderer;
+	std::map< std::string, TextTexture > text_cache;
 
 	// sprites
 	SpriteLoader sl;

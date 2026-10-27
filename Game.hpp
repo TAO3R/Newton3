@@ -5,7 +5,6 @@
 
 #include <string>
 #include <list>
-#include <random>
 
 struct Connection;
 
@@ -77,13 +76,10 @@ struct Object {
 
 struct Game {
 	std::list< Player > players; //(using list so they can have stable addresses)
-	Player *spawn_player(); //add player the end of the players list (may also, e.g., play some spawn anim)
+	Player *spawn_player(); //connection placeholder for the incoming player system
 	void remove_player(Player *); //remove player from game (may also, e.g., play some despawn anim)
 
 	std::list< Object > objects; //non-player objects
-
-	std::mt19937 mt; //used for spawning players
-	uint32_t next_player_number = 1; //used for naming players
 
 	Game();
 
@@ -98,10 +94,14 @@ struct Game {
 	inline static constexpr glm::vec2 ArenaMin = glm::vec2(-1.6f, -1.0f);
 	inline static constexpr glm::vec2 ArenaMax = glm::vec2( 1.6f,  1.0f);
 
+	//escape chamber and boarding area:
+	inline static constexpr glm::vec2 EscapePosition = glm::vec2(-1.35f, 0.0f);
+	inline static constexpr float EscapeHeight = 0.30f;
+	inline static constexpr glm::vec2 EscapeAreaMin = glm::vec2(-1.27f, -0.18f);
+	inline static constexpr glm::vec2 EscapeAreaMax = glm::vec2(-0.99f, 0.18f);
+
 	//player constants:
 	inline static constexpr float PlayerRadius = 0.06f;
-	inline static constexpr float PlayerSpeed = 2.0f;
-	inline static constexpr float PlayerAccelHalflife = 0.25f;
 	
 
 	//---- communication helpers ----
