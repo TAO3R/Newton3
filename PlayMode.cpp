@@ -13,6 +13,8 @@
 
 #include <random>
 #include <array>
+#include <cmath>
+#include <cstdio>
 
 PlayMode::PlayMode(Client &client_) : client(client_), text_renderer(data_path("Outfit-Regular.ttf")) {
 
@@ -24,14 +26,14 @@ PlayMode::PlayMode(Client &client_) : client(client_), text_renderer(data_path("
 		sl.upload_sprites();
 	}
 
-	//Static timer preview; no match timing logic yet.
+	//Common labels; changing match text is cached when first displayed.
 	text_cache.emplace("01:30", text_renderer.make_text("01:30"));
 	text_cache.emplace("ESCAPE POD", text_renderer.make_text("ESCAPE POD"));
 	text_cache.emplace("E - GRAB", text_renderer.make_text("E - GRAB"));
 	for (auto text : {
 		"BOARDING", "YOU ESCAPED", "LEFT BEHIND", "TIME'S UP",
 		"You secured the only escape pod.", "Your opponent took the escape pod.",
-		"Neither player escaped in time.", "F6: NEXT PREVIEW"
+		"Neither player escaped in time."
 	}) {
 		text_cache.emplace(text, text_renderer.make_text(text));
 	}
@@ -103,11 +105,6 @@ void PlayMode::set_grab_prompt(glm::vec2 const &player_position, bool visible) {
 
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
 
-	//Local UI preview only; leave gameplay input and Tab debugging unchanged.
-	if (evt.type == SDL_EVENT_KEY_DOWN && !evt.key.repeat && evt.key.key == SDLK_F6) {
-		result_preview = (result_preview + 1) % 4;
-		return true;
-	}
 
 	if (evt.type == SDL_EVENT_KEY_DOWN) {
 		if (evt.key.repeat) {
@@ -140,6 +137,14 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			controls.toss.downs += 1;
 			controls.toss.pressed = true;
 			return true;
+		} else if (evt.key.key == SDLK_F) {
+			controls.board.downs += 1;
+			controls.board.pressed = true;
+			return true;
+		} else if (evt.key.key == SDLK_R) {
+			controls.restart.downs += 1;
+			controls.restart.pressed = true;
+			return true;
 		} else if (evt.key.key == SDLK_TAB) {
 			show_sprite_bounds = !show_sprite_bounds;
 			return true;
@@ -162,6 +167,12 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			return true;
 		} else if (evt.key.key == SDLK_E) {
 			controls.grab.pressed = false;
+			return true;
+		} else if (evt.key.key == SDLK_F) {
+			controls.board.pressed = false;
+			return true;
+		} else if (evt.key.key == SDLK_R) {
+			controls.restart.pressed = false;
 			return true;
 		} else if (evt.key.key == SDLK_Q) {
 			controls.toss.pressed = false;
@@ -194,6 +205,8 @@ void PlayMode::update(float elapsed) {
 	controls.jet.downs = 0;
 	controls.grab.downs = 0;
 	controls.toss.downs = 0;
+	controls.board.downs = 0;
+	controls.restart.downs = 0;
 
 	//send/receive data:
 	client.poll([this](Connection *c, Connection::Event event){
@@ -237,6 +250,20 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	double const star_time = double(SDL_GetTicks()) * 0.001;
 	//Fixed-seed pixel stars, animated brightness only.
 	if (drawable_size.x == 0 || drawable_size.y == 0) return;
+	Player const *local = game.players.empty() ? nullptr : &game.players.front();
+	bool playing = game.match_state == Game::MatchState::Playing;
+	int result = 0;
+	if (game.match_state == Game::MatchState::Escaped) result = local && local->id == game.winner ? 1 : 2;
+	if (game.match_state == Game::MatchState::Timeout) result = 3;
+	if (game.match_state == Game::MatchState::Disconnected) result = 4;
+	if (game.match_state == Game::MatchState::Draw) result = 5;
+
+	//Reuse text textures; changing timer text is generated only once per second.
+	auto cached_text = [&](std::string const &text) -> TextTexture const & {
+		auto found = text_cache.find(text);
+		if (found == text_cache.end()) found = text_cache.emplace(text, text_renderer.make_text(text)).first;
+		return found->second;
+	};
 	glEnable(GL_SCISSOR_TEST);
 	std::minstd_rand stars(466);
 	for (int i = 0; i < 110; ++i) {
@@ -261,7 +288,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	//Reserve a top strip for UI, then fit the arena into the remaining space.
 	float ui_scale = std::min(float(drawable_size.x) / 1280.0f, float(drawable_size.y) / 720.0f);
 	float header_height = 118.0f * ui_scale;
-	float arena_height = float(drawable_size.y) - header_height;
+	float footer_height = 32.0f * ui_scale;
+	float arena_height = float(drawable_size.y) - header_height - footer_height;
 	float aspect = float(drawable_size.x) / float(drawable_size.y);
 	float scale = std::min(
 		2.0f * aspect / (Game::ArenaMax.x - Game::ArenaMin.x + 2.0f * Game::PlayerRadius),
@@ -273,7 +301,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		scale / aspect, 0.0f, 0.0f, 0.0f,
 		0.0f, scale, 0.0f, 0.0f,
 		0.0f, 0.0f, 1.0f, 0.0f,
-		offset.x * scale / aspect, offset.y * scale - header_height / float(drawable_size.y), 0.0f, 1.0f
+		offset.x * scale / aspect, offset.y * scale + (footer_height - header_height) / float(drawable_size.y), 0.0f, 1.0f
 	);
 	world_from_clip = glm::inverse(world_to_clip); //for turning the mouse into an aim point
 
@@ -336,6 +364,23 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	{
 		DrawLines lines(world_to_clip);
 
+		if (local && playing) {
+			//Jet impulse points toward the cursor, not opposite the exhaust.
+			glm::vec2 aim = glm::vec2(world_from_clip * glm::vec4(mouse_clip, 0.0f, 1.0f));
+			glm::vec2 direction = aim - local->position;
+			if (glm::dot(direction, direction) > 0.000001f) {
+				direction = glm::normalize(direction);
+				glm::vec2 side(-direction.y, direction.x);
+				glm::vec2 start = local->position + direction * (Game::PlayerRadius + 0.035f);
+				glm::vec2 tip = start + direction * 0.18f;
+				bool available = local->jets_left > 0 && !local->anchored;
+				glm::u8vec4 color = available ? glm::u8vec4(local->color * 255.0f, 255) : glm::u8vec4(90, 90, 90, 255);
+				lines.draw(glm::vec3(start, 0.0f), glm::vec3(tip, 0.0f), color);
+				lines.draw(glm::vec3(tip, 0.0f), glm::vec3(tip - direction * 0.045f + side * 0.03f, 0.0f), color);
+				lines.draw(glm::vec3(tip, 0.0f), glm::vec3(tip - direction * 0.045f - side * 0.03f, 0.0f), color);
+			}
+		}
+
 		{ //boarding area outline for checking placement:
 			glm::vec2 min = Game::EscapeAreaMin;
 			glm::vec2 max = Game::EscapeAreaMax;
@@ -366,10 +411,37 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 
 	}
-	if (show_grab_prompt && result_preview == 0) {
-		TextTexture const &prompt = text_cache.at("E - GRAB");
+	//Use server-assigned labels: each client receives its own player first.
+	for (auto const &player : game.players) {
+		bool is_local = local && player.id == local->id;
+		TextTexture const &label = cached_text(player.name + (is_local ? " - YOU" : ""));
+		if (label.height == 0) continue;
+		glm::vec2 anchor = player.position + glm::vec2(0.0f, Game::PlayerRadius + 0.03f);
+		glm::vec4 clip = world_to_clip * glm::vec4(anchor, 0.0f, 1.0f);
+		float pixel_height = 12.0f * ui_scale;
+		float text_scale = pixel_height / float(label.height);
+		glm::vec2 position(
+			(clip.x * 0.5f + 0.5f) * float(drawable_size.x) - float(label.width) * text_scale * 0.5f,
+			(0.5f - clip.y * 0.5f) * float(drawable_size.y) - pixel_height
+		);
+		position.x = std::max(8.0f * ui_scale, std::min(position.x, float(drawable_size.x) - float(label.width) * text_scale - 8.0f * ui_scale));
+		text_renderer.draw_text(label, position + glm::vec2(ui_scale), text_scale, glm::vec3(0.0f), drawable_size);
+		text_renderer.draw_text(label, position, text_scale, player.color, drawable_size);
+	}
+
+	std::string action;
+	if (local && playing) {
+		if (Game::in_boarding_area(local->position)) {
+			bool slow = glm::dot(local->pp.velocity, local->pp.velocity) <= Game::BoardingSpeed * Game::BoardingSpeed;
+			action = slow ? "HOLD F - ESCAPE" : "SLOW DOWN TO BOARD";
+		} else if (local->anchored) action = "ANCHORED | RELEASE E / Q - PUSH OFF";
+		else if (local->holding) action = "Q - THROW | RELEASE E - LET GO";
+		else if (show_grab_prompt) action = "HOLD E - GRAB";
+	}
+	if (!action.empty()) {
+		TextTexture const &prompt = cached_text(action);
 		if (prompt.height > 0) {
-			glm::vec2 anchor = grab_prompt_position + glm::vec2(0.0f, Game::PlayerRadius + 0.04f);
+			glm::vec2 anchor = grab_prompt_position + glm::vec2(0.0f, Game::PlayerRadius + 0.13f);
 			glm::vec4 clip = world_to_clip * glm::vec4(anchor, 0.0f, 1.0f);
 			float pixel_height = 16.0f * ui_scale;
 			float text_scale = pixel_height / float(prompt.height);
@@ -377,6 +449,9 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				(clip.x * 0.5f + 0.5f) * float(drawable_size.x) - float(prompt.width) * text_scale * 0.5f,
 				(0.5f - clip.y * 0.5f) * float(drawable_size.y) - pixel_height
 			);
+			//Keep long prompts inside the window near the arena edges.
+			float max_x = float(drawable_size.x) - float(prompt.width) * text_scale - 8.0f * ui_scale;
+			position.x = std::max(8.0f * ui_scale, std::min(position.x, max_x));
 			//Dark shadow keeps the prompt readable over sprites and stars.
 			text_renderer.draw_text(prompt, position + glm::vec2(1.0f, 1.0f) * ui_scale, text_scale, glm::vec3(0.0f), drawable_size);
 			text_renderer.draw_text(prompt, position, text_scale, glm::vec3(1.0f), drawable_size);
@@ -398,8 +473,11 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		}
 	}
 
-	{ //draw the timer last so it stays above the scene:
-		TextTexture const &timer = text_cache.at("01:30");
+	{ //draw the server-controlled timer above the scene:
+		int seconds = int(std::ceil(game.time_left));
+		char time_text[16];
+		std::snprintf(time_text, sizeof(time_text), "%02d:%02d", seconds / 60, seconds % 60);
+		TextTexture const &timer = cached_text(time_text);
 		if (timer.height > 0) {
 			float text_scale = 32.0f * ui_scale / float(timer.height);
 			glm::vec2 position(
@@ -410,22 +488,12 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		}
 	}
 
-	{ //static boarding preview; replace with server progress when available:
-		float progress = 0.5f;
+	if (local && playing && local->boarding > 0.0f) {
+		float progress = local->boarding / Game::BoardingTime;
 		float bar_width = 180.0f * ui_scale;
 		float bar_height = 8.0f * ui_scale;
 		float bar_left = 0.5f * (float(drawable_size.x) - bar_width);
 		float bar_top = 90.0f * ui_scale;
-
-		TextTexture const &label = text_cache.at("BOARDING");
-		if (label.height > 0) {
-			float text_scale = 12.0f * ui_scale / float(label.height);
-			glm::vec2 position(
-				0.5f * (float(drawable_size.x) - float(label.width) * text_scale),
-				66.0f * ui_scale
-			);
-			text_renderer.draw_text(label, position, text_scale, glm::vec3(0.6f, 0.85f, 1.0f), drawable_size);
-		}
 
 		//Scissor rectangles use a bottom-left origin, unlike text positions.
 		glEnable(GL_SCISSOR_TEST);
@@ -439,25 +507,82 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		glDisable(GL_SCISSOR_TEST);
 	}
 
-	if (result_preview != 0) {
+	{ //status and control reminders, outside the arena:
+		std::string status = game.match_state == Game::MatchState::Waiting
+			? "WAITING FOR SECOND PLAYER" : "REACH THE ESCAPE POD";
+		TextTexture const &label = cached_text(local && playing && local->boarding > 0.0f ? "BOARDING" : status);
+		if (label.height > 0) {
+			float text_scale = 12.0f * ui_scale / float(label.height);
+			glm::vec2 position(0.5f * (float(drawable_size.x) - float(label.width) * text_scale), 66.0f * ui_scale);
+			text_renderer.draw_text(label, position, text_scale, glm::vec3(0.75f), drawable_size);
+		}
+		TextTexture const &help = cached_text("MOUSE - AIM   SPACE - JET   HOLD E - GRAB   Q - THROW   HOLD F - ESCAPE");
+		if (help.height > 0) {
+			float text_scale = 12.0f * ui_scale / float(help.height);
+			glm::vec2 position(0.5f * (float(drawable_size.x) - float(help.width) * text_scale), float(drawable_size.y) - 22.0f * ui_scale);
+			text_renderer.draw_text(help, position, text_scale, glm::vec3(0.75f), drawable_size);
+		}
+	}
+
+	if (local && result == 0) {
+		//Dedicated jet HUD: each illuminated cell is one remaining burst.
+		float left = float(drawable_size.x) - 190.0f * ui_scale;
+		std::string count = "JETS " + std::to_string(local->jets_left) + "/" + std::to_string(Game::JetCount);
+		std::string hint = "SPACE - BOOST";
+		if (!playing) hint = "WAITING";
+		else if (local->jets_left == 0) hint = "NO JETS LEFT";
+		else if (local->anchored) hint = "RELEASE E TO BOOST";
+
+		for (int row = 0; row < 2; ++row) {
+			TextTexture const &label = cached_text(row == 0 ? count : hint);
+			if (label.height == 0) continue;
+			float text_scale = 12.0f * ui_scale / float(label.height);
+			glm::vec2 position(left, (row == 0 ? 20.0f : 64.0f) * ui_scale);
+			text_renderer.draw_text(label, position, text_scale, row == 0 ? local->color : glm::vec3(0.7f), drawable_size);
+		}
+
+		glEnable(GL_SCISSOR_TEST);
+		for (uint8_t i = 0; i < Game::JetCount; ++i) {
+			glm::vec3 color = i < local->jets_left ? local->color : glm::vec3(0.1f, 0.12f, 0.15f);
+			glScissor(
+				int(left + float(i) * 34.0f * ui_scale),
+				int(float(drawable_size.y) - 50.0f * ui_scale),
+				int(28.0f * ui_scale), int(8.0f * ui_scale)
+			);
+			glClearColor(color.r, color.g, color.b, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+		glDisable(GL_SCISSOR_TEST);
+	}
+
+	if (result != 0) {
 		glClearColor(0.015f, 0.025f, 0.04f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		char const *title = "YOU ESCAPED";
 		char const *message = "You secured the only escape pod.";
 		glm::vec3 color(0.45f, 0.9f, 0.8f);
-		if (result_preview == 2) {
+		if (result == 2) {
 			title = "LEFT BEHIND";
 			message = "Your opponent took the escape pod.";
 			color = glm::vec3(1.0f, 0.5f, 0.45f);
-		} else if (result_preview == 3) {
+		} else if (result == 3) {
 			title = "TIME'S UP";
 			message = "Neither player escaped in time.";
 			color = glm::vec3(1.0f, 0.8f, 0.4f);
 		}
 
+		if (result == 4) {
+			title = "PLAYER DISCONNECTED";
+			message = "Waiting for a second player before restarting.";
+			color = glm::vec3(1.0f, 0.8f, 0.4f);
+		} else if (result == 5) {
+			title = "DRAW";
+			message = "Both players boarded at the same time.";
+		}
+
 		auto draw_centered = [&](char const *text, float top, float height, glm::vec3 const &text_color) {
-			TextTexture const &texture = text_cache.at(text);
+			TextTexture const &texture = cached_text(text);
 			if (texture.height == 0) return;
 			float text_scale = height * ui_scale / float(texture.height);
 			glm::vec2 position(
@@ -469,7 +594,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 		draw_centered(title, -65.0f, 42.0f, color);
 		draw_centered(message, 5.0f, 18.0f, glm::vec3(0.85f));
-		draw_centered("F6: NEXT PREVIEW", 75.0f, 12.0f, glm::vec3(0.5f));
+		draw_centered(game.players.size() == 2 ? "R - PLAY AGAIN" : "WAITING FOR SECOND PLAYER", 75.0f, 12.0f, glm::vec3(0.5f));
 	}
 
 	GL_ERRORS();
