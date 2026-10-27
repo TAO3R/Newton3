@@ -46,7 +46,7 @@ struct Player {
 		Button jet;  //push toward 'aim'
 		Button grab; //held = holding on, released = let go
 		Button board; //hold F to board
-		Button restart; //R after a round ends
+		Button restart; //R restarts the shared round
 		Button toss; //throw what's held toward 'aim'
 
 		glm::vec2 aim = glm::vec2(0.0f); //mouse position, world space

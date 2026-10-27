@@ -516,7 +516,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			glm::vec2 position(0.5f * (float(drawable_size.x) - float(label.width) * text_scale), 66.0f * ui_scale);
 			text_renderer.draw_text(label, position, text_scale, glm::vec3(0.75f), drawable_size);
 		}
-		TextTexture const &help = cached_text("MOUSE - AIM   SPACE - JET   HOLD E - GRAB   Q - THROW   HOLD F - ESCAPE");
+		TextTexture const &help = cached_text("MOUSE - AIM   SPACE - JET   HOLD E - GRAB   Q - THROW   HOLD F - ESCAPE   R - RESTART");
 		if (help.height > 0) {
 			float text_scale = 12.0f * ui_scale / float(help.height);
 			glm::vec2 position(0.5f * (float(drawable_size.x) - float(help.width) * text_scale), float(drawable_size.y) - 22.0f * ui_scale);
@@ -594,7 +594,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 		draw_centered(title, -65.0f, 42.0f, color);
 		draw_centered(message, 5.0f, 18.0f, glm::vec3(0.85f));
-		draw_centered(game.players.size() == 2 ? "R - PLAY AGAIN" : "WAITING FOR SECOND PLAYER", 75.0f, 12.0f, glm::vec3(0.5f));
+		draw_centered(game.players.size() == 2 ? "R - RESTART" : "WAITING FOR SECOND PLAYER", 75.0f, 12.0f, glm::vec3(0.5f));
 	}
 
 	GL_ERRORS();

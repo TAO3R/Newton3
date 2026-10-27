@@ -190,13 +190,15 @@ void Game::on_grab_range_exit(Player &player, Object &object) {
 }
 
 void Game::update(float elapsed) {
-	if (match_state != MatchState::Playing) {
-		bool restart = false;
-		for (auto &player : players) {
-			restart = restart || player.controls.restart.downs > 0;
-			player.controls = Player::Controls();
+	//Either player can restart the shared round, including during play.
+	for (auto const &player : players) {
+		if (player.controls.restart.downs > 0 && players.size() == 2) {
+			start_round();
+			return;
 		}
-		if (restart && players.size() == 2) start_round();
+	}
+	if (match_state != MatchState::Playing) {
+		for (auto &player : players) player.controls = Player::Controls();
 		return;
 	}
 	float round_step = std::min(elapsed, time_left);
