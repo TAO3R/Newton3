@@ -5,8 +5,10 @@
 
 #include <string>
 #include <list>
+#include <vector>
 
 struct Connection;
+struct Object;
 
 //Game state, separate from rendering.
 
@@ -40,7 +42,12 @@ struct Button {
 struct Player {
 	//player inputs (sent from client):
 	struct Controls {
-		Button left, right, up, down, jump;
+		Button left, right, up, down;
+		Button jet;  //push toward 'aim'
+		Button grab; //held = holding on, released = let go
+		Button toss; //throw what's held toward 'aim'
+
+		glm::vec2 aim = glm::vec2(0.0f); //mouse position, world space
 
 		void send_controls_message(Connection *connection) const;
 
@@ -57,7 +64,13 @@ struct Player {
 	std::string name = "";
 
 	//sprite used to draw this player:
-	SpriteId sprite = SpriteId::Default;
+	SpriteId sprite = SpriteId::Hands;
+
+	uint8_t jets_left = 0; //set on spawn
+	bool can_grab = false; //something is in grab range right now (drives the grab prompt)
+
+	//server only: objects in grab range, kept by Game::on_grab_range_enter / on_grab_range_exit
+	std::vector< Object * > grab_candidates;
 
 	// physics
 	PhysicsEngine::PhysicsProp pp;
@@ -105,8 +118,17 @@ struct Game {
 	inline static constexpr glm::vec2 EscapeAreaMax = glm::vec2(-0.99f, 0.18f);
 
 	//player constants:
-	inline static constexpr float PlayerRadius = 0.06f;
-	
+	inline static constexpr float PlayerRadius = 0.09f;
+	inline static constexpr float JetImpulse = 0.6f; //per jet; an empty-handed player gains 0.6 units/s
+	inline static constexpr uint8_t JetCount = 3;    //jets per player, never refilled
+	inline static constexpr float GrabRange = 0.05f; //gap between colliders that still counts as in reach
+	inline static constexpr float ThrowImpulse = 1.0f; //held object gets +J toward the aim, the thrower -J
+	inline static constexpr float GripImpulse = 1.2f;  //a hit harder than this knocks a player off what it anchors to
+
+	//grab range bookkeeping, called by update when an object comes into / leaves a player's reach:
+	void on_grab_range_enter(Player &player, Object &object);
+	void on_grab_range_exit(Player &player, Object &object);
+
 
 	//---- communication helpers ----
 

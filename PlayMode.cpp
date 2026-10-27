@@ -129,8 +129,16 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			controls.down.pressed = true;
 			return true;
 		} else if (evt.key.key == SDLK_SPACE) {
-			controls.jump.downs += 1;
-			controls.jump.pressed = true;
+			controls.jet.downs += 1;
+			controls.jet.pressed = true;
+			return true;
+		} else if (evt.key.key == SDLK_E) {
+			controls.grab.downs += 1;
+			controls.grab.pressed = true;
+			return true;
+		} else if (evt.key.key == SDLK_Q) {
+			controls.toss.downs += 1;
+			controls.toss.pressed = true;
 			return true;
 		} else if (evt.key.key == SDLK_TAB) {
 			show_sprite_bounds = !show_sprite_bounds;
@@ -150,15 +158,30 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			controls.down.pressed = false;
 			return true;
 		} else if (evt.key.key == SDLK_SPACE) {
-			controls.jump.pressed = false;
+			controls.jet.pressed = false;
+			return true;
+		} else if (evt.key.key == SDLK_E) {
+			controls.grab.pressed = false;
+			return true;
+		} else if (evt.key.key == SDLK_Q) {
+			controls.toss.pressed = false;
 			return true;
 		}
+	} else if (evt.type == SDL_EVENT_MOUSE_MOTION) {
+		mouse_clip = glm::vec2(
+			2.0f * evt.motion.x / float(window_size.x) - 1.0f,
+			1.0f - 2.0f * evt.motion.y / float(window_size.y)
+		);
+		return true;
 	}
 
 	return false;
 }
 
 void PlayMode::update(float elapsed) {
+
+	//aim at the mouse, in world space:
+	controls.aim = glm::vec2(world_from_clip * glm::vec4(mouse_clip, 0.0f, 1.0f));
 
 	//queue data for sending to server:
 	controls.send_controls_message(&client.connection);
@@ -168,7 +191,9 @@ void PlayMode::update(float elapsed) {
 	controls.right.downs = 0;
 	controls.up.downs = 0;
 	controls.down.downs = 0;
-	controls.jump.downs = 0;
+	controls.jet.downs = 0;
+	controls.grab.downs = 0;
+	controls.toss.downs = 0;
 
 	//send/receive data:
 	client.poll([this](Connection *c, Connection::Event event){
@@ -192,6 +217,14 @@ void PlayMode::update(float elapsed) {
 			}
 		}
 	}, 0.0);
+
+	//grab prompt over the local player (the server sends it first):
+	if (game.players.empty()) {
+		set_grab_prompt(glm::vec2(0.0f), false);
+	} else {
+		Player const &local = game.players.front();
+		set_grab_prompt(local.position, local.can_grab);
+	}
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
@@ -242,6 +275,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		0.0f, 0.0f, 1.0f, 0.0f,
 		offset.x * scale / aspect, offset.y * scale - header_height / float(drawable_size.y), 0.0f, 1.0f
 	);
+	world_from_clip = glm::inverse(world_to_clip); //for turning the mouse into an aim point
 
 	//world-space quad corners of each drawn sprite (4 per sprite), outlined later if show_sprite_bounds:
 	std::vector< glm::vec2 > sprite_corners;
@@ -279,9 +313,18 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			glBindTexture(GL_TEXTURE_2D, sprite.tex);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		};
-		//props, chamber and test objects all come from the server:
+		//props and chamber come from the server:
 		for (auto const &object : game.objects) {
 			draw_sprite(object);
+		}
+
+		//players on top, one player diameter wide:
+		for (auto const &player : game.players) {
+			Object body;
+			body.sprite = player.sprite;
+			body.position = player.position;
+			body.width = 2.0f * Game::PlayerRadius;
+			draw_sprite(body);
 		}
 
 		glBindTexture(GL_TEXTURE_2D, 0);

@@ -54,11 +54,15 @@ struct PhysicsEngine
 
         Collider collider;
 
-        bool grabbable = false;     // players can grab it (only dynamic, unheld bodies are taken)
+        bool grabbable = false;     // players can grab it (dynamic: carried along; static: an anchor to hold on to)
 
         // the other half of a held pair (holder <-> held, set on both), empty when free
         // the pair moves as one body: shared velocity, combined mass in collisions and against walls
+        // (holding a static body anchors the holder: it stays put until it lets go or pushes off)
         Body partner = {};
+
+        // while anchored, a single hit whose impulse exceeds this knocks the holder loose
+        float grip = 0.0f;
 
         // for static and kinematic collision
         float inv_mass() const
@@ -100,8 +104,17 @@ struct PhysicsEngine
     // drop whatever the holder holds, both keep their current velocity
     static void release(Body const &holder);
 
+    // instant push on b (and whatever it's paired with), split by the group's mass; false if the group can't move
+    static bool apply_impulse(Body const &b, glm::vec2 impulse);
+
+    // free to be grabbed: grabbable, dynamic or static, not already held
+    static bool can_be_grabbed(Body const &b);
+
+    // target overlaps the holder's collider grown by 'range'; depth (optional) is larger for nearer targets
+    static bool in_reach(Body const &holder, Body const &target, float range, float *depth = nullptr);
+
     // tick one physics_dt, apply this tick's throws, grabs, then movement and collisions
     // discrete test: bodies closing faster than about (r1 + r2) / physics_dt can pass through each other
-    // (two 0.06 circles: ~14 units/s)
+    // (two 0.09 players: ~22 units/s)
     static void step(std::vector< Body > const &bodies, std::vector< Grab > &grabs, std::vector< Throw > &throws);
 };
