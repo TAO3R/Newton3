@@ -113,6 +113,9 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			controls.jump.downs += 1;
 			controls.jump.pressed = true;
 			return true;
+		} else if (evt.key.key == SDLK_TAB) {
+			show_sprite_bounds = !show_sprite_bounds;
+			return true;
 		}
 	} else if (evt.type == SDL_EVENT_KEY_UP) {
 		if (evt.key.key == SDLK_A) {
@@ -221,6 +224,9 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		offset.x * scale / aspect, offset.y * scale - header_height / float(drawable_size.y), 0.0f, 1.0f
 	);
 
+	//world-space quad corners of each drawn sprite (4 per sprite), outlined later if show_sprite_bounds:
+	std::vector< glm::vec2 > sprite_corners;
+
 	{ //draw sprites (before lines, so lines and names end up on top):
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -233,14 +239,22 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			if (size_t(object.sprite) >= sl.sprites.size()) return; //bad id from server
 			Sprite const &sprite = sl.sprites[size_t(object.sprite)];
 
-			//world-space size: one player diameter tall, width follows the image's aspect ratio:
-			float height = 2.0f * Game::PlayerRadius;
-			float width = height * float(sprite.size.x) / float(sprite.size.y);
+			//world-space size: height follows the image's aspect ratio:
+			float width = object.width;
+			float height = width * float(sprite.size.y) / float (sprite.size.x);
 
-			glm::mat4 clip_from_object = world_to_clip
-				* glm::translate(glm::mat4(1.0f), glm::vec3(object.position, 0.0f))
+			glm::mat4 world_from_object = glm::translate(glm::mat4(1.0f), glm::vec3(object.position, 0.0f))
 				* glm::rotate(glm::mat4(1.0f), object.rotation, glm::vec3(0.0f, 0.0f, 1.0f))
 				* glm::scale(glm::mat4(1.0f), glm::vec3(width * object.scale.x, height * object.scale.y, 1.0f));
+			glm::mat4 clip_from_object = world_to_clip * world_from_object;
+
+			if (show_sprite_bounds) {
+				//quad corners in order around the edge (skips the shared diagonal):
+				for (glm::vec2 c : {glm::vec2(-0.5f,-0.5f), glm::vec2(0.5f,-0.5f), glm::vec2(0.5f,0.5f), glm::vec2(-0.5f,0.5f)}) {
+					sprite_corners.emplace_back(world_from_object * glm::vec4(c, 0.0f, 1.0f));
+				}
+			}
+
 			glUniformMatrix4fv(color_texture_program->CLIP_FROM_OBJECT_mat4, 1, GL_FALSE, glm::value_ptr(clip_from_object));
 
 			glBindTexture(GL_TEXTURE_2D, sprite.tex);
@@ -301,6 +315,17 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			lines.draw(glm::vec3(min.x, max.y, 0.0f), glm::vec3(min.x, min.y, 0.0f), color);
 		}
 
+
+		//sprite quad outlines (only filled when show_sprite_bounds):
+		for (size_t i = 0; i + 4 <= sprite_corners.size(); i += 4) {
+			for (size_t e = 0; e < 4; ++e) {
+				lines.draw(
+					glm::vec3(sprite_corners[i + e], 0.0f),
+					glm::vec3(sprite_corners[i + (e + 1) % 4], 0.0f),
+					glm::u8vec4(0xff, 0x00, 0xff, 0xff)
+				);
+			}
+		}
 
 		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
 		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));

@@ -76,7 +76,10 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 Game::Game() {
 	//test object in the middle of the arena:
 	objects.emplace_back();
-	objects.back().sprite = SpriteId::Hands;
+	Object &hands = objects.back();
+	hands.sprite = SpriteId::Hands;
+	//collider is the circle inside the sprite (hands.png is square, so height == width):
+	hands.pp.collider = PhysicsEngine::CircleCollider{ 0.5f * hands.width };
 }
 
 Player *Game::spawn_player() {
@@ -84,6 +87,9 @@ Player *Game::spawn_player() {
 	Player &player = players.back();
 
 	//Connection placeholder until the new player system is merged.
+
+	//collider matches the player's circle:
+	player.pp.collider = PhysicsEngine::CircleCollider{ PlayerRadius };
 
 	return &player;
 }
@@ -152,6 +158,7 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(object.rotation);
 		connection.send(object.scale);
 		connection.send(object.sprite);
+		connection.send(object.width);
 	};
 
 	//object count:
@@ -221,6 +228,7 @@ bool Game::recv_state_message(Connection *connection_) {
 		read(&object.rotation);
 		read(&object.scale);
 		read(&object.sprite);
+		read(&object.width);
 	}
 
 	if (at != size) throw std::runtime_error("Trailing data in state message.");
