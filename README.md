@@ -20,7 +20,7 @@ Players spawn at the upper-right and lower-right. Race to the only escape pod on
 - Hold E: grab a nearby object or anchor; release E to let go.
 - Q: throw or push off toward the cursor, recoiling in the opposite direction.
 - Hold F: board inside the marked area while moving slowly. Boarding takes three uninterrupted seconds.
-- R: restart after the round ends (requires two connected players).
+- R: restart the round at any time (requires two connected players).
 - Tab: toggle sprite bounds for debugging.
 
 The first player to board wins. Leaving the area, moving too fast, or releasing F resets progress.
