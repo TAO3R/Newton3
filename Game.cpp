@@ -167,7 +167,7 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 	//send player info helper:
 	auto send_player = [&](Player const &player) {
 		connection.send(player.position);
-		connection.send(player.velocity);
+		connection.send(player.pp.velocity);
 		connection.send(player.color);
 		connection.send(player.sprite);
 
@@ -238,7 +238,7 @@ bool Game::recv_state_message(Connection *connection_) {
 		players.emplace_back();
 		Player &player = players.back();
 		read(&player.position);
-		read(&player.velocity);
+		read(&player.pp.velocity);
 		read(&player.color);
 		read(&player.sprite);
 		uint8_t name_len;
