@@ -36,6 +36,14 @@ struct PhysicsEngine
     // half size of the axis-aligned box around the collider
     static glm::vec2 half_extent(Collider const &collider);
 
+    struct PhysicsProp;
+
+    struct Body
+    {
+        glm::vec2 *position = nullptr;
+        PhysicsProp *pp = nullptr;
+    };
+
     struct PhysicsProp
     {
         MovementType type = MovementType::Dynamic;
@@ -46,9 +54,15 @@ struct PhysicsEngine
 
         Collider collider;
 
+        bool grabbable = false;     // players can grab it (only dynamic, unheld bodies are taken)
+
+        // the other half of a held pair (holder <-> held, set on both), empty when free
+        // the pair moves as one body: shared velocity, combined mass in collisions and against walls
+        Body partner = {};
+
         // for static and kinematic collision
         float inv_mass() const
-        {   
+        {
             assert(mass > 0.0f);
             return type == MovementType::Dynamic ? 1.0f / mass : 0.0f;
         }
@@ -60,27 +74,34 @@ struct PhysicsEngine
         float depth;        // penetration along normal, > 0
     };
 
-    struct Body
-    {
-        glm::vec2 *position;
-        PhysicsProp *pp;
-    };
+    // player actions this physics frame, applied once by step and then cleared
 
-    // player actions
+    // try to grab the nearest grabbable body whose collider is within 'range' of the holder's collider
     struct Grab
     {
-
+        Body holder;
+        float range = 0.0f;
     };
 
+    // let go of whatever the holder holds, pushing it with 'impulse' and the holder with -impulse (zero = plain release)
     struct Throw
     {
-        
+        Body holder;
+        glm::vec2 impulse = glm::vec2(0.0f);
     };
 
     static void advance(std::vector< Body > const &bodies, float dt);
     static bool detect_collision(Body const &b1, Body const &b2, Collision *hit);
     static void handle_collision(Body const &b1, Body const &b2, Collision const &c);
-    
-    // tick one physics_dt, apply this tick's collisions, grabs, throws
-    static void step(std::vector< Body > const &bodies, std::vector< Grab > const &grabs, std::vector< Throw > &throws);
+
+    // keep every collider inside [min, max], bouncing off the walls (a held pair is pushed back as one)
+    static void confine(std::vector< Body > const &bodies, glm::vec2 min, glm::vec2 max);
+
+    // drop whatever the holder holds, both keep their current velocity
+    static void release(Body const &holder);
+
+    // tick one physics_dt, apply this tick's throws, grabs, then movement and collisions
+    // discrete test: bodies closing faster than about (r1 + r2) / physics_dt can pass through each other
+    // (two 0.06 circles: ~14 units/s)
+    static void step(std::vector< Body > const &bodies, std::vector< Grab > &grabs, std::vector< Throw > &throws);
 };

@@ -108,28 +108,135 @@ bool PhysicsEngine::detect_collision(Body const &b1, Body const &b2, Collision *
     return box_box(*b1.position, x1->half_size, *b2.position, x2->half_size, hit);
 }
 
+// a held pair acts as one body: inverse of the summed mass
+static float group_inv_mass(PhysicsEngine::Body const &b)
+{
+    float inv = b.pp->inv_mass();
+    PhysicsEngine::PhysicsProp const *partner = b.pp->partner.pp;
+    if (inv == 0.0f || !partner) { return inv; }
+    return 1.0f / (b.pp->mass + partner->mass);
+}
+
+// shift and accelerate b together with its partner, so a held pair keeps its offset and shared velocity
+static void move_group(PhysicsEngine::Body const &b, glm::vec2 dp, glm::vec2 dv)
+{
+    *b.position += dp;
+    b.pp->velocity += dv;
+    PhysicsEngine::Body const &partner = b.pp->partner;
+    if (partner.pp)
+    {
+        *partner.position += dp;
+        partner.pp->velocity += dv;
+    }
+}
+
 // push the pair apart and bounce them, both split by inverse mass (static / kinematic side doesn't budge)
 void PhysicsEngine::handle_collision(Body const &b1, Body const &b2, Collision const &c)
 {
-    float inv1 = b1.pp->inv_mass();
-    float inv2 = b2.pp->inv_mass();
+    float inv1 = group_inv_mass(b1);
+    float inv2 = group_inv_mass(b2);
     float inv_sum = inv1 + inv2;
     if (inv_sum == 0.0f) { return; }    // neither side can be moved
 
-    *b1.position -= c.normal * (c.depth * inv1 / inv_sum);
-    *b2.position += c.normal * (c.depth * inv2 / inv_sum);
+    move_group(b1, -c.normal * (c.depth * inv1 / inv_sum), glm::vec2(0.0f));
+    move_group(b2,  c.normal * (c.depth * inv2 / inv_sum), glm::vec2(0.0f));
 
     float vn = glm::dot(b2.pp->velocity - b1.pp->velocity, c.normal);
     if (vn >= 0.0f) { return; }         // already separating
     float e = glm::min(b1.pp->elasticity, b2.pp->elasticity);
     float j = -(1.0f + e) * vn / inv_sum;
-    b1.pp->velocity -= c.normal * (j * inv1);
-    b2.pp->velocity += c.normal * (j * inv2);
+    move_group(b1, glm::vec2(0.0f), -c.normal * (j * inv1));
+    move_group(b2, glm::vec2(0.0f),  c.normal * (j * inv2));
 }
 
-// tick one physics_dt, apply this tick's collisions, grabs, throws
-void PhysicsEngine::step(std::vector< Body > const &bodies, std::vector< Grab > const &grabs, std::vector< Throw > &throws)
+void PhysicsEngine::confine(std::vector< Body > const &bodies, glm::vec2 min, glm::vec2 max)
 {
+    for (Body const &b : bodies)
+    {
+        if (b.pp->inv_mass() == 0.0f) { continue; }  // static / kinematic aren't pushed by walls either
+        glm::vec2 half = half_extent(b.pp->collider);
+        glm::vec2 lo = min + half;
+        glm::vec2 hi = max - half;
+        for (int a = 0; a < 2; a++)
+        {
+            float pos = (*b.position)[a];
+            float vel = b.pp->velocity[a];
+            glm::vec2 dp(0.0f), dv(0.0f);
+            if (pos < lo[a])
+            {
+                dp[a] = lo[a] - pos;
+                dv[a] = std::abs(vel) * b.pp->elasticity - vel;
+            }
+            else if (pos > hi[a])
+            {
+                dp[a] = hi[a] - pos;
+                dv[a] = -std::abs(vel) * b.pp->elasticity - vel;
+            }
+            else { continue; }
+            move_group(b, dp, dv);
+        }
+    }
+}
+
+void PhysicsEngine::release(Body const &holder)
+{
+    Body held = holder.pp->partner;
+    if (!held.pp) { return; }
+    held.pp->partner = {};
+    holder.pp->partner = {};
+}
+
+void PhysicsEngine::step(std::vector< Body > const &bodies, std::vector< Grab > &grabs, std::vector< Throw > &throws)
+{
+    {   // throws: unlink the pair, then +impulse on the held body and -impulse on the holder
+        for (Throw const &t : throws)
+        {
+            Body held = t.holder.pp->partner;
+            if (!held.pp) { continue; }     // not holding anything
+            release(t.holder);
+            held.pp->velocity += t.impulse * held.pp->inv_mass();
+            t.holder.pp->velocity -= t.impulse * t.holder.pp->inv_mass();
+        }
+        throws.clear();
+    }
+
+    {   // grabs: link the holder to the nearest grabbable body in reach, merging momentum like an inelastic hit
+        for (Grab const &g : grabs)
+        {
+            PhysicsProp *holder = g.holder.pp;
+            if (holder->partner.pp) { continue; }   // already holding something
+
+            // reach = the holder's collider grown by range; deepest overlap = nearest surface
+            PhysicsProp reach = *holder;
+            if (auto *circle = std::get_if< CircleCollider >(&reach.collider)) { circle->radius += g.range; }
+            else { std::get< BoxCollider >(reach.collider).half_size += glm::vec2(g.range); }
+            Body reach_body{ g.holder.position, &reach };
+
+            Body const *target = nullptr;
+            float target_depth = 0.0f;
+            for (Body const &b : bodies)
+            {
+                if (b.pp == holder || !b.pp->grabbable || b.pp->type != MovementType::Dynamic || b.pp->partner.pp) { continue; }
+                Collision c;
+                if (detect_collision(reach_body, b, &c) && (!target || c.depth > target_depth))
+                {
+                    target = &b;
+                    target_depth = c.depth;
+                }
+            }
+            if (!target) { continue; }
+
+            float m1 = holder->mass;
+            float m2 = target->pp->mass;
+            glm::vec2 v = (m1 * holder->velocity + m2 * target->pp->velocity) / (m1 + m2);
+            holder->velocity = v;
+            target->pp->velocity = v;
+            holder->partner = *target;
+            target->pp->partner = g.holder;
+        }
+        grabs.clear();
+    }
+
     {   // move, then resolve every overlapping pair in index order
         advance(bodies, physics_dt);
 
@@ -139,17 +246,10 @@ void PhysicsEngine::step(std::vector< Body > const &bodies, std::vector< Grab > 
             for (size_t j = i + 1; j < bodies.size(); j++)
             {
                 if (bodies[i].pp->inv_mass() == 0.0f && bodies[j].pp->inv_mass() == 0.0f) { continue; }
+                if (bodies[i].pp->partner.pp == bodies[j].pp) { continue; }    // a held pair doesn't collide with itself
                 Collision c;
                 if (detect_collision(bodies[i], bodies[j], &c)) { handle_collision(bodies[i], bodies[j], c); }
             }
         }
-    }
-
-    {   // grabs
-
-    }
-
-    {   // throws
-
     }
 }
