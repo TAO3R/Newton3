@@ -6,13 +6,14 @@
 #include <iostream>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
 
 
 void Player::Controls::send_controls_message(Connection *connection_) const {
 	assert(connection_);
 	auto &connection = *connection_;
 
-	uint32_t size = 5;
+	uint32_t size = 7 + sizeof(aim);
 	connection.send(Message::C2S_Controls);
 	connection.send(uint8_t(size));
 	connection.send(uint8_t(size >> 8));
@@ -29,7 +30,10 @@ void Player::Controls::send_controls_message(Connection *connection_) const {
 	send_button(right);
 	send_button(up);
 	send_button(down);
-	send_button(jump);
+	send_button(jet);
+	send_button(grab);
+	send_button(toss);
+	connection.send(aim);
 }
 
 bool Player::Controls::recv_controls_message(Connection *connection_) {
@@ -44,7 +48,8 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 	uint32_t size = (uint32_t(recv_buffer[3]) << 16)
 	              | (uint32_t(recv_buffer[2]) << 8)
 	              |  uint32_t(recv_buffer[1]);
-	if (size != 5) throw std::runtime_error("Controls message with size " + std::to_string(size) + " != 5!");
+	uint32_t expected = 7 + sizeof(aim);
+	if (size != expected) throw std::runtime_error("Controls message with size " + std::to_string(size) + " != " + std::to_string(expected) + "!");
 	
 	//expecting complete message:
 	if (recv_buffer.size() < 4 + size) return false;
@@ -63,7 +68,10 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 	recv_button(recv_buffer[4+1], &right);
 	recv_button(recv_buffer[4+2], &up);
 	recv_button(recv_buffer[4+3], &down);
-	recv_button(recv_buffer[4+4], &jump);
+	recv_button(recv_buffer[4+4], &jet);
+	recv_button(recv_buffer[4+5], &grab);
+	recv_button(recv_buffer[4+6], &toss);
+	std::memcpy(&aim, &recv_buffer[4+7], sizeof(aim));
 
 	//delete message from buffer:
 	recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + 4 + size);
@@ -75,37 +83,35 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 //-----------------------------------------
 
 Game::Game() {
-	//test object in the middle of the arena:
-	objects.emplace_back();
-	Object &hands = objects.back();
-	hands.sprite = SpriteId::Hands;
-	//collider is the circle inside the sprite (hands.png is square, so height == width):
-	hands.pp.collider = PhysicsEngine::CircleCollider{ 0.5f * hands.width };
-
 	//map props: free-floating, grabbable, box collider covering the sprite (all prop pngs are square):
-	auto add_prop = [&](SpriteId sprite, glm::vec2 const &position, float scale) {
+	auto add_prop = [&](SpriteId sprite, glm::vec2 const &position, float scale, float mass, glm::vec2 const &drift) {
 		objects.emplace_back();
 		Object &prop = objects.back();
 		prop.sprite = sprite;
 		prop.position = position;
 		prop.scale = glm::vec2(scale);
+		prop.pp.mass = mass;
+		prop.pp.velocity = drift;
 		prop.pp.grabbable = true;
 		prop.pp.collider = PhysicsEngine::BoxCollider{ glm::vec2(0.5f * prop.width * scale) };
 	};
-	for (float side : {-1.0f, 1.0f}) {
-		add_prop(SpriteId::Cart, glm::vec2(0.85f, side * 0.65f), 1.3f);
-		add_prop(SpriteId::Turbine, glm::vec2(-0.35f, side * 0.45f), 1.8f);
-		add_prop(SpriteId::PC, glm::vec2(-1.15f, side * 0.75f), 1.5f);
-	}
-	add_prop(SpriteId::Probe, glm::vec2(0.35f, 0.0f), 1.4f);
+	//props are a bit heavier than a player (1.0); a few start with a slow drift so the room isn't frozen:
+	add_prop(SpriteId::Cart,    glm::vec2( 0.85f,  0.65f), 1.3f, 1.5f, glm::vec2(-0.03f, 0.0f));
+	add_prop(SpriteId::Cart,    glm::vec2( 0.85f, -0.65f), 1.3f, 1.5f, glm::vec2(0.0f));
+	add_prop(SpriteId::Turbine, glm::vec2(-0.35f,  0.45f), 1.8f, 1.4f, glm::vec2(0.0f));
+	add_prop(SpriteId::Turbine, glm::vec2(-0.35f, -0.45f), 1.8f, 1.4f, glm::vec2(0.02f, 0.03f));
+	add_prop(SpriteId::PC,      glm::vec2(-1.15f,  0.75f), 1.5f, 1.3f, glm::vec2(0.0f));
+	add_prop(SpriteId::PC,      glm::vec2(-1.15f, -0.75f), 1.5f, 1.3f, glm::vec2(0.0f));
+	add_prop(SpriteId::Probe,   glm::vec2( 0.35f,  0.0f),  1.4f, 1.2f, glm::vec2(0.0f, -0.04f));
 
-	//escape chamber: fixed in place
+	//escape chamber: fixed in place, players can hold on to it (and push off with a throw)
 	objects.emplace_back();
 	Object &chamber = objects.back();
 	chamber.sprite = SpriteId::Chamber;
 	chamber.position = EscapePosition;
-	chamber.scale = glm::vec2(EscapeHeight / (2.0f * PlayerRadius));
+	chamber.scale = glm::vec2(EscapeHeight / chamber.width);
 	chamber.pp.type = PhysicsEngine::MovementType::Static;
+	chamber.pp.grabbable = true;
 	chamber.pp.collider = PhysicsEngine::CircleCollider{ 0.5f * EscapeHeight };
 }
 
@@ -117,6 +123,7 @@ Player *Game::spawn_player() {
 
 	//collider matches the player's circle:
 	player.pp.collider = PhysicsEngine::CircleCollider{ PlayerRadius };
+	player.jets_left = JetCount;
 
 	return &player;
 }
@@ -135,14 +142,55 @@ void Game::remove_player(Player *player) {
 	assert(found);
 }
 
+void Game::on_grab_range_enter(Player &player, Object &object) {
+	player.grab_candidates.push_back(&object);
+	player.can_grab = true;
+}
+
+void Game::on_grab_range_exit(Player &player, Object &object) {
+	auto &candidates = player.grab_candidates;
+	candidates.erase(std::remove(candidates.begin(), candidates.end(), &object), candidates.end());
+	player.can_grab = !candidates.empty();
+}
+
 void Game::update(float elapsed) {
-	//Keep input counters bounded while waiting for the new simulation.
+	//player actions this tick (step applies them once, then clears the lists):
+	std::vector< PhysicsEngine::Grab > grabs;
+	std::vector< PhysicsEngine::Throw > throws;
+
 	for (auto &player : players) {
+		PhysicsEngine::Body body{&player.position, &player.pp};
+
+		//jet: one push toward the aim point per press, while jets last:
+		glm::vec2 to_aim = player.controls.aim - player.position;
+		for (uint8_t i = 0; i < player.controls.jet.downs && player.jets_left > 0; ++i) {
+			if (to_aim == glm::vec2(0.0f)) break; //no direction, don't spend the jet
+			if (!PhysicsEngine::apply_impulse(body, glm::normalize(to_aim) * JetImpulse)) break; //anchored: can't move
+			player.jets_left -= 1;
+		}
+
+		//throw what's held toward the aim point (the thrower recoils the other way):
+		bool tossed = false;
+		if (player.controls.toss.downs > 0 && player.pp.partner.pp && to_aim != glm::vec2(0.0f)) {
+			throws.push_back({body, glm::normalize(to_aim) * ThrowImpulse});
+			tossed = true;
+		}
+
+		//grab on press, let go once the key is up:
+		if (player.controls.grab.downs > 0) {
+			grabs.push_back({body, GrabRange});
+		} else if (!tossed && !player.controls.grab.pressed && player.pp.partner.pp) {
+			throws.push_back({body, glm::vec2(0.0f)});
+		}
+
+		//reset 'downs' since controls have been handled:
 		player.controls.left.downs = 0;
 		player.controls.right.downs = 0;
 		player.controls.up.downs = 0;
 		player.controls.down.downs = 0;
-		player.controls.jump.downs = 0;
+		player.controls.jet.downs = 0;
+		player.controls.grab.downs = 0;
+		player.controls.toss.downs = 0;
 	}
 
 	{ //physics: step every player and object, keeping them inside the arena
@@ -150,15 +198,33 @@ void Game::update(float elapsed) {
 		for (auto &p : players) bodies.push_back({&p.position, &p.pp});
 		for (auto &o : objects) bodies.push_back({&o.position, &o.pp});
 
-		//player actions this tick (step applies them once, then clears the lists):
-		std::vector< PhysicsEngine::Grab > grabs;
-		std::vector< PhysicsEngine::Throw > throws;
-		//(grab / release / throw input goes here: push a Grab on grab press, a Throw on release or throw)
-
 		int steps = int(std::round(elapsed / PhysicsEngine::physics_dt));
 		for (int s = 0; s < steps; ++s) {
 			PhysicsEngine::step(bodies, grabs, throws);
 			PhysicsEngine::confine(bodies, ArenaMin, ArenaMax);
+		}
+	}
+
+	//grab range: compare what each player could grab now with last tick, firing enter / exit for the difference
+	for (auto &player : players) {
+		PhysicsEngine::Body holder{&player.position, &player.pp};
+		std::vector< Object * > in_range;
+		if (!player.pp.partner.pp) { //already holding something: can't grab another
+			for (auto &object : objects) {
+				PhysicsEngine::Body target{&object.position, &object.pp};
+				if (PhysicsEngine::can_be_grabbed(target) && PhysicsEngine::in_reach(holder, target, GrabRange)) {
+					in_range.push_back(&object);
+				}
+			}
+		}
+
+		//walk a copy, since exit edits grab_candidates:
+		for (Object *object : std::vector< Object * >(player.grab_candidates)) {
+			if (std::find(in_range.begin(), in_range.end(), object) == in_range.end()) on_grab_range_exit(player, *object);
+		}
+		for (Object *object : in_range) {
+			auto const &candidates = player.grab_candidates;
+			if (std::find(candidates.begin(), candidates.end(), object) == candidates.end()) on_grab_range_enter(player, *object);
 		}
 	}
 }
@@ -182,6 +248,8 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(player.pp.velocity);
 		connection.send(player.color);
 		connection.send(player.sprite);
+		connection.send(player.jets_left);
+		connection.send(uint8_t(player.can_grab ? 1 : 0));
 
 		//NOTE: can't just 'send(name)' because player.name is not plain-old-data type.
 		//effectively: truncates player name to 255 chars
@@ -253,6 +321,10 @@ bool Game::recv_state_message(Connection *connection_) {
 		read(&player.pp.velocity);
 		read(&player.color);
 		read(&player.sprite);
+		read(&player.jets_left);
+		uint8_t can_grab;
+		read(&can_grab);
+		player.can_grab = (can_grab != 0);
 		uint8_t name_len;
 		read(&name_len);
 		//n.b. would probably be more efficient to directly copy from recv_buffer, but I think this is clearer:

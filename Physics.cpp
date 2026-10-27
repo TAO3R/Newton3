@@ -108,12 +108,13 @@ bool PhysicsEngine::detect_collision(Body const &b1, Body const &b2, Collision *
     return box_box(*b1.position, x1->half_size, *b2.position, x2->half_size, hit);
 }
 
-// a held pair acts as one body: inverse of the summed mass
+// a held pair acts as one body: inverse of the summed mass, or 0 when anchored to something immovable
 static float group_inv_mass(PhysicsEngine::Body const &b)
 {
     float inv = b.pp->inv_mass();
     PhysicsEngine::PhysicsProp const *partner = b.pp->partner.pp;
     if (inv == 0.0f || !partner) { return inv; }
+    if (partner->inv_mass() == 0.0f) { return 0.0f; }
     return 1.0f / (b.pp->mass + partner->mass);
 }
 
@@ -153,7 +154,7 @@ void PhysicsEngine::confine(std::vector< Body > const &bodies, glm::vec2 min, gl
 {
     for (Body const &b : bodies)
     {
-        if (b.pp->inv_mass() == 0.0f) { continue; }  // static / kinematic aren't pushed by walls either
+        if (group_inv_mass(b) == 0.0f) { continue; }  // static / kinematic / anchored aren't pushed by walls either
         glm::vec2 half = half_extent(b.pp->collider);
         glm::vec2 lo = min + half;
         glm::vec2 hi = max - half;
@@ -186,6 +187,33 @@ void PhysicsEngine::release(Body const &holder)
     holder.pp->partner = {};
 }
 
+bool PhysicsEngine::apply_impulse(Body const &b, glm::vec2 impulse)
+{
+    float inv = group_inv_mass(b);
+    if (inv == 0.0f) { return false; }
+    move_group(b, glm::vec2(0.0f), impulse * inv);
+    return true;
+}
+
+bool PhysicsEngine::can_be_grabbed(Body const &b)
+{
+    MovementType type = b.pp->type;
+    return b.pp->grabbable && (type == MovementType::Dynamic || type == MovementType::Static) && !b.pp->partner.pp;
+}
+
+// reach = the holder's collider grown by range
+bool PhysicsEngine::in_reach(Body const &holder, Body const &target, float range, float *depth)
+{
+    PhysicsProp reach = *holder.pp;
+    if (auto *circle = std::get_if< CircleCollider >(&reach.collider)) { circle->radius += range; }
+    else { std::get< BoxCollider >(reach.collider).half_size += glm::vec2(range); }
+
+    Collision c;
+    if (!detect_collision(Body{ holder.position, &reach }, target, &c)) { return false; }
+    if (depth) { *depth = c.depth; }
+    return true;
+}
+
 void PhysicsEngine::step(std::vector< Body > const &bodies, std::vector< Grab > &grabs, std::vector< Throw > &throws)
 {
     {   // throws: unlink the pair, then +impulse on the held body and -impulse on the holder
@@ -206,29 +234,26 @@ void PhysicsEngine::step(std::vector< Body > const &bodies, std::vector< Grab > 
             PhysicsProp *holder = g.holder.pp;
             if (holder->partner.pp) { continue; }   // already holding something
 
-            // reach = the holder's collider grown by range; deepest overlap = nearest surface
-            PhysicsProp reach = *holder;
-            if (auto *circle = std::get_if< CircleCollider >(&reach.collider)) { circle->radius += g.range; }
-            else { std::get< BoxCollider >(reach.collider).half_size += glm::vec2(g.range); }
-            Body reach_body{ g.holder.position, &reach };
-
+            // deepest overlap with the grown collider = nearest surface
             Body const *target = nullptr;
             float target_depth = 0.0f;
             for (Body const &b : bodies)
             {
-                if (b.pp == holder || !b.pp->grabbable || b.pp->type != MovementType::Dynamic || b.pp->partner.pp) { continue; }
-                Collision c;
-                if (detect_collision(reach_body, b, &c) && (!target || c.depth > target_depth))
+                if (b.pp == holder || !can_be_grabbed(b)) { continue; }
+                float depth;
+                if (in_reach(g.holder, b, g.range, &depth) && (!target || depth > target_depth))
                 {
                     target = &b;
-                    target_depth = c.depth;
+                    target_depth = depth;
                 }
             }
             if (!target) { continue; }
 
+            // anchoring to something immovable just stops the holder against it
             float m1 = holder->mass;
             float m2 = target->pp->mass;
-            glm::vec2 v = (m1 * holder->velocity + m2 * target->pp->velocity) / (m1 + m2);
+            glm::vec2 v = target->pp->inv_mass() == 0.0f ? target->pp->velocity
+                : (m1 * holder->velocity + m2 * target->pp->velocity) / (m1 + m2);
             holder->velocity = v;
             target->pp->velocity = v;
             holder->partner = *target;
