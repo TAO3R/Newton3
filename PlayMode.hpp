@@ -35,5 +35,8 @@ struct PlayMode : Mode {
 	// sprites
 	SpriteLoader sl;
 
+	//client-only debug: outline each sprite's quad (toggle with tab):
+	bool show_sprite_bounds = false;
+
 	GLuint vbo = 0, vao = 0;
 };
