@@ -22,7 +22,12 @@ enum class Message : uint8_t {
 enum class SpriteId : uint8_t {
 	Default = 0,
 	Hands   = 1,
-	Count   = 2
+	Cart    = 2,
+	PC      = 3,
+	Probe   = 4,
+	Turbine = 5,
+	Chamber = 6,
+	Count   = 7
 };
 
 //used to represent a control input:

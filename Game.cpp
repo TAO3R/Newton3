@@ -81,6 +81,32 @@ Game::Game() {
 	hands.sprite = SpriteId::Hands;
 	//collider is the circle inside the sprite (hands.png is square, so height == width):
 	hands.pp.collider = PhysicsEngine::CircleCollider{ 0.5f * hands.width };
+
+	//map props: free-floating, grabbable, box collider covering the sprite (all prop pngs are square):
+	auto add_prop = [&](SpriteId sprite, glm::vec2 const &position, float scale) {
+		objects.emplace_back();
+		Object &prop = objects.back();
+		prop.sprite = sprite;
+		prop.position = position;
+		prop.scale = glm::vec2(scale);
+		prop.pp.grabbable = true;
+		prop.pp.collider = PhysicsEngine::BoxCollider{ glm::vec2(0.5f * prop.width * scale) };
+	};
+	for (float side : {-1.0f, 1.0f}) {
+		add_prop(SpriteId::Cart, glm::vec2(0.85f, side * 0.65f), 1.3f);
+		add_prop(SpriteId::Turbine, glm::vec2(-0.35f, side * 0.45f), 1.8f);
+		add_prop(SpriteId::PC, glm::vec2(-1.15f, side * 0.75f), 1.5f);
+	}
+	add_prop(SpriteId::Probe, glm::vec2(0.35f, 0.0f), 1.4f);
+
+	//escape chamber: fixed in place
+	objects.emplace_back();
+	Object &chamber = objects.back();
+	chamber.sprite = SpriteId::Chamber;
+	chamber.position = EscapePosition;
+	chamber.scale = glm::vec2(EscapeHeight / (2.0f * PlayerRadius));
+	chamber.pp.type = PhysicsEngine::MovementType::Static;
+	chamber.pp.collider = PhysicsEngine::CircleCollider{ 0.5f * EscapeHeight };
 }
 
 Player *Game::spawn_player() {
@@ -99,6 +125,8 @@ void Game::remove_player(Player *player) {
 	bool found = false;
 	for (auto pi = players.begin(); pi != players.end(); ++pi) {
 		if (&*pi == player) {
+			//drop anything held first, so nothing keeps a pointer to this player:
+			PhysicsEngine::release({&player->position, &player->pp});
 			players.erase(pi);
 			found = true;
 			break;
@@ -122,31 +150,15 @@ void Game::update(float elapsed) {
 		for (auto &p : players) bodies.push_back({&p.position, &p.pp});
 		for (auto &o : objects) bodies.push_back({&o.position, &o.pp});
 
-		//arena walls: clamp the collider inside and bounce off, scaled by the body's elasticity
-		auto confine = [](PhysicsEngine::Body const &b) {
-			if (b.pp->inv_mass() == 0.0f) return; //static / kinematic aren't pushed by walls either
-			glm::vec2 &pos = *b.position;
-			glm::vec2 &vel = b.pp->velocity;
-			glm::vec2 half = PhysicsEngine::half_extent(b.pp->collider);
-			glm::vec2 lo = ArenaMin + half;
-			glm::vec2 hi = ArenaMax - half;
-			for (int a = 0; a < 2; ++a) {
-				if (pos[a] < lo[a]) {
-					pos[a] = lo[a];
-					vel[a] = std::abs(vel[a]) * b.pp->elasticity;
-				} else if (pos[a] > hi[a]) {
-					pos[a] = hi[a];
-					vel[a] =-std::abs(vel[a]) * b.pp->elasticity;
-				}
-			}
-		};
-
-		std::vector< PhysicsEngine::Grab > const grabs;
+		//player actions this tick (step applies them once, then clears the lists):
+		std::vector< PhysicsEngine::Grab > grabs;
 		std::vector< PhysicsEngine::Throw > throws;
+		//(grab / release / throw input goes here: push a Grab on grab press, a Throw on release or throw)
+
 		int steps = int(std::round(elapsed / PhysicsEngine::physics_dt));
 		for (int s = 0; s < steps; ++s) {
 			PhysicsEngine::step(bodies, grabs, throws);
-			for (auto const &b : bodies) confine(b);
+			PhysicsEngine::confine(bodies, ArenaMin, ArenaMax);
 		}
 	}
 }

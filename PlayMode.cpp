@@ -260,39 +260,9 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			glBindTexture(GL_TEXTURE_2D, sprite.tex);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		};
+		//props, chamber and test objects all come from the server:
 		for (auto const &object : game.objects) {
 			draw_sprite(object);
-		}
-
-		{ //client-only decoration Sprites (not sent by server):
-			enum class MapSprite : uint8_t {
-				Cart = 2,
-				PC = 3,
-				Probe = 4,
-				Turbine = 5,
-				Chamber = 6
-			};
-
-			auto draw_prop = [&](MapSprite sprite, glm::vec2 const &position, float scale) {
-				Object prop;
-				prop.sprite = static_cast<SpriteId>(sprite);
-				prop.position = position;
-				prop.scale = glm::vec2(scale);
-				draw_sprite(prop);
-			};
-
-			//Escape chamber
-			draw_prop(
-				MapSprite::Chamber,
-				Game::EscapePosition,
-				Game::EscapeHeight / (2.0f * Game::PlayerRadius)
-			);
-			for (float side : {-1.0f, 1.0f}) {
-				draw_prop(MapSprite::Cart, glm::vec2(0.85f, side * 0.65f), 1.3f);
-				draw_prop(MapSprite::Turbine, glm::vec2(-0.35f, side * 0.45f), 1.8f);
-				draw_prop(MapSprite::PC, glm::vec2(-1.15f, side * 0.75f), 1.5f);
-			}
-			draw_prop(MapSprite::Probe, glm::vec2(0.35f, 0.0f), 1.4f);
 		}
 
 		glBindTexture(GL_TEXTURE_2D, 0);
