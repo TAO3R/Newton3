@@ -13,7 +13,7 @@ void Player::Controls::send_controls_message(Connection *connection_) const {
 	assert(connection_);
 	auto &connection = *connection_;
 
-	uint32_t size = 7 + sizeof(aim);
+	uint32_t size = 9 + sizeof(aim);
 	connection.send(Message::C2S_Controls);
 	connection.send(uint8_t(size));
 	connection.send(uint8_t(size >> 8));
@@ -33,6 +33,8 @@ void Player::Controls::send_controls_message(Connection *connection_) const {
 	send_button(jet);
 	send_button(grab);
 	send_button(toss);
+	send_button(board);
+	send_button(restart);
 	connection.send(aim);
 }
 
@@ -48,7 +50,7 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 	uint32_t size = (uint32_t(recv_buffer[3]) << 16)
 	              | (uint32_t(recv_buffer[2]) << 8)
 	              |  uint32_t(recv_buffer[1]);
-	uint32_t expected = 7 + sizeof(aim);
+	uint32_t expected = 9 + sizeof(aim);
 	if (size != expected) throw std::runtime_error("Controls message with size " + std::to_string(size) + " != " + std::to_string(expected) + "!");
 	
 	//expecting complete message:
@@ -71,7 +73,9 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 	recv_button(recv_buffer[4+4], &jet);
 	recv_button(recv_buffer[4+5], &grab);
 	recv_button(recv_buffer[4+6], &toss);
-	std::memcpy(&aim, &recv_buffer[4+7], sizeof(aim));
+	recv_button(recv_buffer[4+7], &board);
+	recv_button(recv_buffer[4+8], &restart);
+	std::memcpy(&aim, &recv_buffer[4+9], sizeof(aim));
 
 	//delete message from buffer:
 	recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + 4 + size);
@@ -119,13 +123,17 @@ Player *Game::spawn_player() {
 	players.emplace_back();
 	Player &player = players.back();
 
-	//Connection placeholder until the new player system is merged.
+	player.id = next_player_id++;
+	player.name = players.size() == 1 ? "P1" : "P2";
+	player.color = players.size() == 1 ? glm::vec3(0.35f, 0.75f, 1.0f) : glm::vec3(1.0f, 0.65f, 0.3f);
+	player.position = glm::vec2(1.3f, players.size() == 1 ? 0.75f : -0.75f);
 
 	//collider matches the player's circle:
 	player.pp.collider = PhysicsEngine::CircleCollider{ PlayerRadius };
 	player.jets_left = JetCount;
 	player.pp.grip = GripImpulse;
 
+	if (players.size() == 2) start_round();
 	return &player;
 }
 
@@ -141,6 +149,33 @@ void Game::remove_player(Player *player) {
 		}
 	}
 	assert(found);
+	if (match_state == MatchState::Playing) match_state = MatchState::Disconnected;
+}
+
+bool Game::in_boarding_area(glm::vec2 const &position) {
+	return position.x >= EscapeAreaMin.x && position.x <= EscapeAreaMax.x
+		&& position.y >= EscapeAreaMin.y && position.y <= EscapeAreaMax.y;
+}
+
+void Game::start_round() {
+	//Keep player addresses stable: server connections point into this list.
+	for (auto &player : players) PhysicsEngine::release({&player.position, &player.pp});
+	objects = Game().objects;
+	int slot = 0;
+	for (auto &player : players) {
+		uint32_t id = player.id;
+		player = Player();
+		player.id = id;
+		player.name = slot == 0 ? "P1" : "P2";
+		player.color = slot == 0 ? glm::vec3(0.35f, 0.75f, 1.0f) : glm::vec3(1.0f, 0.65f, 0.3f);
+		player.position = glm::vec2(1.3f, slot++ == 0 ? 0.75f : -0.75f);
+		player.pp.collider = PhysicsEngine::CircleCollider{PlayerRadius};
+		player.pp.grip = GripImpulse;
+		player.jets_left = JetCount;
+	}
+	time_left = RoundTime;
+	winner = 0;
+	match_state = MatchState::Playing;
 }
 
 void Game::on_grab_range_enter(Player &player, Object &object) {
@@ -155,6 +190,17 @@ void Game::on_grab_range_exit(Player &player, Object &object) {
 }
 
 void Game::update(float elapsed) {
+	if (match_state != MatchState::Playing) {
+		bool restart = false;
+		for (auto &player : players) {
+			restart = restart || player.controls.restart.downs > 0;
+			player.controls = Player::Controls();
+		}
+		if (restart && players.size() == 2) start_round();
+		return;
+	}
+	float round_step = std::min(elapsed, time_left);
+
 	//player actions this tick (step applies them once, then clears the lists):
 	std::vector< PhysicsEngine::Grab > grabs;
 	std::vector< PhysicsEngine::Throw > throws;
@@ -192,6 +238,8 @@ void Game::update(float elapsed) {
 		player.controls.jet.downs = 0;
 		player.controls.grab.downs = 0;
 		player.controls.toss.downs = 0;
+		player.controls.board.downs = 0;
+		player.controls.restart.downs = 0;
 	}
 
 	{ //physics: step every player and object, keeping them inside the arena
@@ -228,6 +276,31 @@ void Game::update(float elapsed) {
 			if (std::find(candidates.begin(), candidates.end(), object) == candidates.end()) on_grab_range_enter(player, *object);
 		}
 	}
+	//After physics, only a slow player holding F inside the area may board.
+	float first_finish = round_step + 1.0f;
+	bool tied = false;
+	for (auto &player : players) {
+		player.holding = player.pp.partner.pp != nullptr;
+		player.anchored = player.holding && player.pp.partner.pp->type == PhysicsEngine::MovementType::Static;
+		bool eligible = in_boarding_area(player.position)
+			&& glm::dot(player.pp.velocity, player.pp.velocity) <= BoardingSpeed * BoardingSpeed;
+		if (eligible && player.controls.board.pressed) {
+			float finish = BoardingTime - player.boarding;
+			player.boarding = std::min(BoardingTime, player.boarding + round_step);
+			if (finish <= round_step + 0.00001f) {
+				if (finish < first_finish - 0.00001f) {
+					first_finish = finish;
+					winner = player.id;
+					tied = false;
+				} else if (std::abs(finish - first_finish) <= 0.00001f) tied = true;
+			}
+		} else player.boarding = 0.0f;
+	}
+	time_left = std::max(0.0f, time_left - round_step);
+	if (winner != 0) {
+		match_state = tied ? MatchState::Draw : MatchState::Escaped;
+		if (tied) winner = 0;
+	} else if (time_left <= 0.0f) match_state = MatchState::Timeout;
 }
 
 
@@ -245,6 +318,10 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 
 	//send player info helper:
 	auto send_player = [&](Player const &player) {
+		connection.send(player.id);
+		connection.send(player.boarding);
+		connection.send(uint8_t(player.holding));
+		connection.send(uint8_t(player.anchored));
 		connection.send(player.position);
 		connection.send(player.pp.velocity);
 		connection.send(player.color);
@@ -258,6 +335,10 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(len);
 		connection.send_buffer.insert(connection.send_buffer.end(), player.name.begin(), player.name.begin() + len);
 	};
+
+	connection.send(match_state);
+	connection.send(time_left);
+	connection.send(winner);
 
 	//player count:
 	connection.send(uint8_t(players.size()));
@@ -312,12 +393,23 @@ bool Game::recv_state_message(Connection *connection_) {
 		at += sizeof(*val);
 	};
 
+	read(&match_state);
+	read(&time_left);
+	read(&winner);
+
 	players.clear();
 	uint8_t player_count;
 	read(&player_count);
 	for (uint8_t i = 0; i < player_count; ++i) {
 		players.emplace_back();
 		Player &player = players.back();
+		read(&player.id);
+		read(&player.boarding);
+		uint8_t holding, anchored;
+		read(&holding);
+		read(&anchored);
+		player.holding = holding != 0;
+		player.anchored = anchored != 0;
 		read(&player.position);
 		read(&player.pp.velocity);
 		read(&player.color);

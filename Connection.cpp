@@ -234,6 +234,15 @@ Server::Server(std::string const &port) {
 				continue;
 			}
 
+			//Accept IPv4 LAN clients as well when the selected address is IPv6.
+			if (info->ai_family == AF_INET6) {
+				int zero = 0;
+				if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast< const char * >(&zero), sizeof(zero)) != 0) {
+					closesocket(s);
+					continue; //try the next address, including IPv4
+				}
+			}
+
 			{ //make it okay to reuse port:
 				#ifdef _WIN32
 				BOOL one = TRUE;

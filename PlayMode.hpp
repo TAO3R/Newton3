@@ -50,9 +50,6 @@ struct PlayMode : Mode {
 	TextRenderer text_renderer;
 	std::map< std::string, TextTexture > text_cache;
 
-	//Local UI preview: game, victory, defeat, timeout.
-	int result_preview = 0;
-
 	// sprites
 	SpriteLoader sl;
 

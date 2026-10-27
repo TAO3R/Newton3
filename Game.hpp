@@ -45,6 +45,8 @@ struct Player {
 		Button left, right, up, down;
 		Button jet;  //push toward 'aim'
 		Button grab; //held = holding on, released = let go
+		Button board; //hold F to board
+		Button restart; //R after a round ends
 		Button toss; //throw what's held toward 'aim'
 
 		glm::vec2 aim = glm::vec2(0.0f); //mouse position, world space
@@ -66,6 +68,10 @@ struct Player {
 	//sprite used to draw this player:
 	SpriteId sprite = SpriteId::Hands;
 
+	uint32_t id = 0;
+	float boarding = 0.0f; //seconds of uninterrupted boarding
+	bool holding = false;
+	bool anchored = false;
 	uint8_t jets_left = 0; //set on spawn
 	bool can_grab = false; //something is in grab range right now (drives the grab prompt)
 
@@ -93,12 +99,23 @@ struct Object {
 
 struct Game {
 	std::list< Player > players; //(using list so they can have stable addresses)
-	Player *spawn_player(); //connection placeholder for the incoming player system
+	Player *spawn_player(); //start a round when both players have joined
 	void remove_player(Player *); //remove player from game (may also, e.g., play some despawn anim)
 
 	std::list< Object > objects; //non-player objects
 
 	Game();
+
+	enum class MatchState : uint8_t { Waiting, Playing, Escaped, Timeout, Disconnected, Draw };
+	MatchState match_state = MatchState::Waiting;
+	float time_left = 90.0f;
+	uint32_t winner = 0;
+	uint32_t next_player_id = 1;
+	void start_round();
+	static bool in_boarding_area(glm::vec2 const &position);
+	inline static constexpr float RoundTime = 90.0f;
+	inline static constexpr float BoardingTime = 3.0f;
+	inline static constexpr float BoardingSpeed = 0.15f;
 
 	//state update function:
 	void update(float elapsed);

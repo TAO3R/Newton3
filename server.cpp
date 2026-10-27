@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
 			//helper used on client close (due to quit) and server close (due to error):
 			auto remove_connection = [&](Connection *c) {
 				auto f = connection_to_player.find(c);
-				assert(f != connection_to_player.end());
+				if (f == connection_to_player.end()) return;
 				game.remove_player(f->second);
 				connection_to_player.erase(f);
 			};
@@ -70,6 +70,9 @@ int main(int argc, char **argv) {
 			server.poll([&](Connection *c, Connection::Event evt){
 				if (evt == Connection::OnOpen) {
 					//client connected:
+
+					//Only two active connections per match.
+					if (game.players.size() >= 2) { c->close(); return; }
 
 					//create some player info for them:
 					connection_to_player.emplace(c, game.spawn_player());
@@ -85,7 +88,7 @@ int main(int argc, char **argv) {
 
 					//look up in players list:
 					auto f = connection_to_player.find(c);
-					assert(f != connection_to_player.end());
+					if (f == connection_to_player.end()) { c->recv_buffer.clear(); return; }
 					Player &player = *f->second;
 
 					//handle messages from client:
