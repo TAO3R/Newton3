@@ -179,7 +179,8 @@ const common_names = [
 	maek.CPP('GL.cpp'),
 	maek.CPP('Load.cpp'),
 	maek.CPP('Connection.cpp'),
-	maek.CPP('hex_dump.cpp')
+	maek.CPP('hex_dump.cpp'),
+	maek.CPP('Physics.cpp')
 ];
 
 const show_meshes_names = [
