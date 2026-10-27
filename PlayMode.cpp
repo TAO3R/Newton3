@@ -17,10 +17,10 @@
 PlayMode::PlayMode(Client &client_) : client(client_) {
 
 	{ //upload sprite textures (order must match SpriteId):
-		Sprite s = sl.load_sprite("default.png");
-		sl.add_sprite(s);
-		s = sl.load_sprite("hands.png");
-		sl.add_sprite(s);
+		for (auto name : {"default.png", "hands.png", "cart.png", "pc.png", "probe.png", "turbine.png", "cryosleep_chamber.png"}) {
+			Sprite sprite = sl.load_sprite(name);
+			sl.add_sprite(sprite);
+		}
 		sl.upload_sprites();
 	}
 
@@ -176,10 +176,35 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		return ret;
 	}();
 
-	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glDisable(GL_DEPTH_TEST);
 	
+	//Render-time clock keeps stars independent of simulation updates.
+	double const star_time = double(SDL_GetTicks()) * 0.001;
+	//Fixed-seed pixel stars, animated brightness only.
+	if (drawable_size.x == 0 || drawable_size.y == 0) return;
+	glEnable(GL_SCISSOR_TEST);
+	std::minstd_rand stars(466);
+	for (int i = 0; i < 110; ++i) {
+		int x = int(stars() % drawable_size.x);
+		int y = int(stars() % drawable_size.y);
+		float phase = float(stars() % 628) * 0.01f;
+		float rate = 0.4f + float(stars() % 80) * 0.01f;
+		float wave = float(0.5 + 0.5 * std::sin(star_time * double(rate) * 3.0 + double(phase)));
+		float light = 0.04f + 0.96f * wave * wave * wave;
+		int size = 1;
+		if (i % 13 == 0) {
+			size = 3;
+		} else if (i % 4 == 0) {
+			size = 2;
+		}
+		glScissor(x, y, size, size);
+		glClearColor(light * 0.9f, light * 0.95f, light, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+	}
+	glDisable(GL_SCISSOR_TEST);
+
 	//figure out view transform to center the arena:
 	float aspect = float(drawable_size.x) / float(drawable_size.y);
 	float scale = std::min(
@@ -203,8 +228,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		glBindVertexArray(vao);
 		glActiveTexture(GL_TEXTURE0);
 
-		for (auto const &object : game.objects) {
-			if (size_t(object.sprite) >= sl.sprites.size()) continue; //bad id from server
+		auto draw_sprite = [&](Object const &object) {
+			if (size_t(object.sprite) >= sl.sprites.size()) return; //bad id from server
 			Sprite const &sprite = sl.sprites[size_t(object.sprite)];
 
 			//world-space size: one player diameter tall, width follows the image's aspect ratio:
@@ -219,6 +244,36 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 			glBindTexture(GL_TEXTURE_2D, sprite.tex);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+		};
+		for (auto const &object : game.objects) {
+			draw_sprite(object);
+		}
+
+		{ //client-only decoration Sprites (not sent by server):
+			enum class MapSprite : uint8_t {
+				Cart = 2,
+				PC = 3,
+				Probe = 4,
+				Turbine = 5,
+				Chamber = 6
+			};
+
+			auto draw_prop = [&](MapSprite sprite, glm::vec2 const &position, float scale) {
+				Object prop;
+				prop.sprite = static_cast<SpriteId>(sprite);
+				prop.position = position;
+				prop.scale = glm::vec2(scale);
+				draw_sprite(prop);
+			};
+
+			//Escape chamber
+			draw_prop(MapSprite::Chamber, glm::vec2(-1.35f, 0.0f), 2.5f);
+			for (float side : {-1.0f, 1.0f}) {
+				draw_prop(MapSprite::Cart, glm::vec2(0.85f, side * 0.65f), 1.3f);
+				draw_prop(MapSprite::Turbine, glm::vec2(-0.35f, side * 0.45f), 1.8f);
+				draw_prop(MapSprite::PC, glm::vec2(-1.15f, side * 0.75f), 1.5f);
+			}
+			draw_prop(MapSprite::Probe, glm::vec2(0.35f, 0.0f), 1.4f);
 		}
 
 		glBindTexture(GL_TEXTURE_2D, 0);
@@ -243,10 +298,10 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				glm::u8vec4(0xff, 0xff, 0xff, 0x00));
 		};
 
-		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
-		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
-		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
-		lines.draw(glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
+		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
+		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
+		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
+		lines.draw(glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
 
 		for (auto const &player : game.players) {
 			glm::u8vec4 col = glm::u8vec4(player.color.x*255, player.color.y*255, player.color.z*255, 0xff);
