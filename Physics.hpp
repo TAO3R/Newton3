@@ -61,6 +61,9 @@ struct PhysicsEngine
         // (holding a static body anchors the holder: it stays put until it lets go or pushes off)
         Body partner = {};
 
+        // while anchored, a single hit whose impulse exceeds this knocks the holder loose
+        float grip = 0.0f;
+
         // for static and kinematic collision
         float inv_mass() const
         {

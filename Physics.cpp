@@ -131,9 +131,32 @@ static void move_group(PhysicsEngine::Body const &b, glm::vec2 dp, glm::vec2 dv)
     }
 }
 
+// holding on to something immovable (a dynamic body paired with a static one)
+static bool anchored(PhysicsEngine::Body const &b)
+{
+    PhysicsEngine::PhysicsProp const *partner = b.pp->partner.pp;
+    return b.pp->inv_mass() != 0.0f && partner && partner->inv_mass() == 0.0f;
+}
+
 // push the pair apart and bounce them, both split by inverse mass (static / kinematic side doesn't budge)
 void PhysicsEngine::handle_collision(Body const &b1, Body const &b2, Collision const &c)
 {
+    float vn = glm::dot(b2.pp->velocity - b1.pp->velocity, c.normal);
+    float e = glm::min(b1.pp->elasticity, b2.pp->elasticity);
+
+    // an anchored holder lets go when the hit is harder than its grip (the impulse the anchor would have to absorb),
+    // and then takes this hit empty-handed
+    auto knocked_loose = [&](Body const &holder, Body const &hitter)
+    {
+        float inv = group_inv_mass(hitter);
+        return anchored(holder) && inv != 0.0f && -(1.0f + e) * vn / inv > holder.pp->grip;
+    };
+    if (vn < 0.0f)
+    {
+        if (knocked_loose(b1, b2)) { release(b1); }
+        if (knocked_loose(b2, b1)) { release(b2); }
+    }
+
     float inv1 = group_inv_mass(b1);
     float inv2 = group_inv_mass(b2);
     float inv_sum = inv1 + inv2;
@@ -142,9 +165,7 @@ void PhysicsEngine::handle_collision(Body const &b1, Body const &b2, Collision c
     move_group(b1, -c.normal * (c.depth * inv1 / inv_sum), glm::vec2(0.0f));
     move_group(b2,  c.normal * (c.depth * inv2 / inv_sum), glm::vec2(0.0f));
 
-    float vn = glm::dot(b2.pp->velocity - b1.pp->velocity, c.normal);
     if (vn >= 0.0f) { return; }         // already separating
-    float e = glm::min(b1.pp->elasticity, b2.pp->elasticity);
     float j = -(1.0f + e) * vn / inv_sum;
     move_group(b1, glm::vec2(0.0f), -c.normal * (j * inv1));
     move_group(b2, glm::vec2(0.0f),  c.normal * (j * inv2));

@@ -123,6 +123,7 @@ struct Game {
 	inline static constexpr uint8_t JetCount = 3;    //jets per player, never refilled
 	inline static constexpr float GrabRange = 0.05f; //gap between colliders that still counts as in reach
 	inline static constexpr float ThrowImpulse = 1.0f; //held object gets +J toward the aim, the thrower -J
+	inline static constexpr float GripImpulse = 1.2f;  //a hit harder than this knocks a player off what it anchors to
 
 	//grab range bookkeeping, called by update when an object comes into / leaves a player's reach:
 	void on_grab_range_enter(Player &player, Object &object);

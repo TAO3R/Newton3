@@ -124,6 +124,7 @@ Player *Game::spawn_player() {
 	//collider matches the player's circle:
 	player.pp.collider = PhysicsEngine::CircleCollider{ PlayerRadius };
 	player.jets_left = JetCount;
+	player.pp.grip = GripImpulse;
 
 	return &player;
 }
