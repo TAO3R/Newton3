@@ -2,6 +2,7 @@
 
 #include "Connection.hpp"
 #include "Game.hpp"
+#include "SpriteLoader.hpp"
 
 #include <glm/glm.hpp>
 
@@ -31,4 +32,8 @@ struct PlayMode : Mode {
 	//connection to server:
 	Client &client;
 
+	// sprites
+	SpriteLoader sl;
+
+	GLuint vbo = 0, vao = 0;
 };

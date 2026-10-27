@@ -76,6 +76,9 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 //-----------------------------------------
 
 Game::Game() : mt(0x15466666) {
+	//test object in the middle of the arena:
+	objects.emplace_back();
+	objects.back().sprite = SpriteId::Hands;
 }
 
 Player *Game::spawn_player() {
@@ -206,7 +209,8 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(player.position);
 		connection.send(player.velocity);
 		connection.send(player.color);
-	
+		connection.send(player.sprite);
+
 		//NOTE: can't just 'send(name)' because player.name is not plain-old-data type.
 		//effectively: truncates player name to 255 chars
 		uint8_t len = uint8_t(std::min< size_t >(255, player.name.size()));
@@ -216,10 +220,24 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 
 	//player count:
 	connection.send(uint8_t(players.size()));
-	if (connection_player) send_player(*connection_player);
+	if (connection_player) send_player(*connection_player);	// localhost
 	for (auto const &player : players) {
 		if (&player == connection_player) continue;
 		send_player(player);
+	}
+
+	//send object info helper:
+	auto send_object = [&](Object const &object) {
+		connection.send(object.position);
+		connection.send(object.rotation);
+		connection.send(object.scale);
+		connection.send(object.sprite);
+	};
+
+	//object count:
+	connection.send(uint8_t(objects.size()));
+	for (auto const &object : objects) {
+		send_object(object);
 	}
 
 	//compute the message size and patch into the message header:
@@ -261,6 +279,7 @@ bool Game::recv_state_message(Connection *connection_) {
 		read(&player.position);
 		read(&player.velocity);
 		read(&player.color);
+		read(&player.sprite);
 		uint8_t name_len;
 		read(&name_len);
 		//n.b. would probably be more efficient to directly copy from recv_buffer, but I think this is clearer:
@@ -270,6 +289,18 @@ bool Game::recv_state_message(Connection *connection_) {
 			read(&c);
 			player.name += c;
 		}
+	}
+
+	objects.clear();
+	uint8_t object_count;
+	read(&object_count);
+	for (uint8_t i = 0; i < object_count; ++i) {
+		objects.emplace_back();
+		Object &object = objects.back();
+		read(&object.position);
+		read(&object.rotation);
+		read(&object.scale);
+		read(&object.sprite);
 	}
 
 	if (at != size) throw std::runtime_error("Trailing data in state message.");
