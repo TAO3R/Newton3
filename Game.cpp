@@ -13,7 +13,7 @@ void Player::Controls::send_controls_message(Connection *connection_) const {
 	assert(connection_);
 	auto &connection = *connection_;
 
-	uint32_t size = 9 + sizeof(aim);
+	uint32_t size = 4 + sizeof(aim);
 	connection.send(Message::C2S_Controls);
 	connection.send(uint8_t(size));
 	connection.send(uint8_t(size >> 8));
@@ -45,7 +45,7 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 	uint32_t size = (uint32_t(recv_buffer[3]) << 16)
 	              | (uint32_t(recv_buffer[2]) << 8)
 	              |  uint32_t(recv_buffer[1]);
-	uint32_t expected = 9 + sizeof(aim);
+	uint32_t expected = 4 + sizeof(aim);
 	if (size != expected) throw std::runtime_error("Controls message with size " + std::to_string(size) + " != " + std::to_string(expected) + "!");
 	
 	//expecting complete message:
@@ -61,11 +61,11 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 		button->downs = uint8_t(d);
 	};
 
-	recv_button(recv_buffer[4+4], &jet);
-	recv_button(recv_buffer[4+5], &grab);
-	recv_button(recv_buffer[4+6], &toss);
-	recv_button(recv_buffer[4+8], &restart);
-	std::memcpy(&aim, &recv_buffer[4+9], sizeof(aim));
+	recv_button(recv_buffer[4+0], &jet);
+	recv_button(recv_buffer[4+1], &grab);
+	recv_button(recv_buffer[4+2], &toss);
+	recv_button(recv_buffer[4+3], &restart);
+	std::memcpy(&aim, &recv_buffer[4+4], sizeof(aim));
 
 	//delete message from buffer:
 	recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + 4 + size);
