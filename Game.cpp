@@ -204,6 +204,16 @@ void Game::update(float elapsed) {
 			player.jets_left -= 1;
 		}
 
+		//recharge one jet at a time until full:
+		if (player.jets_left < JetCount) {
+			player.jet_recharge += elapsed;
+			if (player.jet_recharge >= JetRechargeTime) {
+				player.jet_recharge -= JetRechargeTime;
+				player.jets_left += 1;
+			}
+		}
+		if (player.jets_left == JetCount) player.jet_recharge = 0.0f;
+
 		//throw what's held toward the aim point (the thrower recoils the other way):
 		bool tossed = false;
 		if (player.controls.toss.downs > 0 && player.pp.partner.pp && to_aim != glm::vec2(0.0f)) {

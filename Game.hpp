@@ -69,6 +69,7 @@ struct Player {
 	bool holding = false;
 	bool anchored = false;
 	uint8_t jets_left = 0; //set on spawn
+	float jet_recharge = 0.0f; //server only: seconds charged toward the next jet
 	bool can_grab = false; //something is in grab range right now (drives the grab prompt)
 
 	//server only: objects in grab range, kept by Game::on_grab_range_enter / on_grab_range_exit
@@ -131,10 +132,11 @@ struct Game {
 
 	//player constants:
 	inline static constexpr float PlayerRadius = 0.09f;
-	inline static constexpr float JetImpulse = 0.6f; //per jet; an empty-handed player gains 0.6 units/s
-	inline static constexpr uint8_t JetCount = 3;    //jets per player, never refilled
+	inline static constexpr float JetImpulse = 0.4f; //per jet; an empty-handed player gains 0.6 units/s
+	inline static constexpr uint8_t JetCount = 3;    //max jets per player
+	inline static constexpr float JetRechargeTime = 3.0f; //seconds to recharge one jet while below JetCount
 	inline static constexpr float GrabRange = 0.05f; //gap between colliders that still counts as in reach
-	inline static constexpr float ThrowImpulse = 1.0f; //held object gets +J toward the aim, the thrower -J
+	inline static constexpr float ThrowImpulse = 0.3f; //held object gets +J toward the aim, the thrower -J
 	inline static constexpr float GripImpulse = 1.2f;  //a hit harder than this knocks a player off what it anchors to
 
 	//grab range bookkeeping, called by update when an object comes into / leaves a player's reach:
