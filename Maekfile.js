@@ -209,6 +209,14 @@ const show_scene_exe = maek.LINK([...show_scene_names, ...common_names], 'scenes
 //set the default target to the game (and copy the readme files):
 maek.TARGETS = [client_exe, server_exe, show_meshes_exe, show_scene_exe, ...copies];
 
+//Windows classroom launcher; standalone server/client targets remain available.
+if (maek.OS === 'windows') {
+	const launcher = maek.CPP('Launcher.cpp');
+	maek.TARGETS.push(maek.LINK([launcher], 'dist/Newton3', {
+		LINK: [...maek.options.LINK.filter(flag => !flag.startsWith('/SUBSYSTEM:')), '/SUBSYSTEM:WINDOWS', '/ENTRY:mainCRTStartup']
+	}));
+}
+
 //Note that tasks that produce ':abstract targets' are never cached.
 // This is similar to how .PHONY targets behave in make.
 

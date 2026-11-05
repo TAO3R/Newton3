@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
 	//------------ initialization ------------
 
 	Server server(argv[1]);
+	std::cout << "NEWTON3_SERVER_READY" << std::endl;
 
 	//------------ main loop ------------
 
