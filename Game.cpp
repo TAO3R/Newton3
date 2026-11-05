@@ -26,14 +26,9 @@ void Player::Controls::send_controls_message(Connection *connection_) const {
 		connection.send(uint8_t( (b.pressed ? 0x80 : 0x00) | (b.downs & 0x7f) ) );
 	};
 
-	send_button(left);
-	send_button(right);
-	send_button(up);
-	send_button(down);
 	send_button(jet);
 	send_button(grab);
 	send_button(toss);
-	send_button(board);
 	send_button(restart);
 	connection.send(aim);
 }
@@ -66,14 +61,9 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 		button->downs = uint8_t(d);
 	};
 
-	recv_button(recv_buffer[4+0], &left);
-	recv_button(recv_buffer[4+1], &right);
-	recv_button(recv_buffer[4+2], &up);
-	recv_button(recv_buffer[4+3], &down);
 	recv_button(recv_buffer[4+4], &jet);
 	recv_button(recv_buffer[4+5], &grab);
 	recv_button(recv_buffer[4+6], &toss);
-	recv_button(recv_buffer[4+7], &board);
 	recv_button(recv_buffer[4+8], &restart);
 	std::memcpy(&aim, &recv_buffer[4+9], sizeof(aim));
 
@@ -124,8 +114,6 @@ Player *Game::spawn_player() {
 	Player &player = players.back();
 
 	player.id = next_player_id++;
-	player.name = players.size() == 1 ? "P1" : "P2";
-	player.color = players.size() == 1 ? glm::vec3(0.35f, 0.75f, 1.0f) : glm::vec3(1.0f, 0.65f, 0.3f);
 	player.position = glm::vec2(1.3f, players.size() == 1 ? 0.75f : -0.75f);
 
 	//collider matches the player's circle:
@@ -166,8 +154,6 @@ void Game::start_round() {
 		uint32_t id = player.id;
 		player = Player();
 		player.id = id;
-		player.name = slot == 0 ? "P1" : "P2";
-		player.color = slot == 0 ? glm::vec3(0.35f, 0.75f, 1.0f) : glm::vec3(1.0f, 0.65f, 0.3f);
 		player.position = glm::vec2(1.3f, slot++ == 0 ? 0.75f : -0.75f);
 		player.pp.collider = PhysicsEngine::CircleCollider{PlayerRadius};
 		player.pp.grip = GripImpulse;
@@ -233,14 +219,9 @@ void Game::update(float elapsed) {
 		}
 
 		//reset 'downs' since controls have been handled:
-		player.controls.left.downs = 0;
-		player.controls.right.downs = 0;
-		player.controls.up.downs = 0;
-		player.controls.down.downs = 0;
 		player.controls.jet.downs = 0;
 		player.controls.grab.downs = 0;
 		player.controls.toss.downs = 0;
-		player.controls.board.downs = 0;
 		player.controls.restart.downs = 0;
 	}
 
@@ -286,7 +267,7 @@ void Game::update(float elapsed) {
 		player.anchored = player.holding && player.pp.partner.pp->type == PhysicsEngine::MovementType::Static;
 		bool eligible = in_boarding_area(player.position)
 			&& glm::dot(player.pp.velocity, player.pp.velocity) <= BoardingSpeed * BoardingSpeed;
-		if (eligible && player.controls.board.pressed) {
+		if (eligible) {
 			float finish = BoardingTime - player.boarding;
 			player.boarding = std::min(BoardingTime, player.boarding + round_step);
 			if (finish <= round_step + 0.00001f) {
@@ -326,16 +307,9 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(uint8_t(player.anchored));
 		connection.send(player.position);
 		connection.send(player.pp.velocity);
-		connection.send(player.color);
 		connection.send(player.sprite);
 		connection.send(player.jets_left);
 		connection.send(uint8_t(player.can_grab ? 1 : 0));
-
-		//NOTE: can't just 'send(name)' because player.name is not plain-old-data type.
-		//effectively: truncates player name to 255 chars
-		uint8_t len = uint8_t(std::min< size_t >(255, player.name.size()));
-		connection.send(len);
-		connection.send_buffer.insert(connection.send_buffer.end(), player.name.begin(), player.name.begin() + len);
 	};
 
 	connection.send(match_state);
@@ -353,7 +327,6 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 	//send object info helper:
 	auto send_object = [&](Object const &object) {
 		connection.send(object.position);
-		connection.send(object.rotation);
 		connection.send(object.scale);
 		connection.send(object.sprite);
 		connection.send(object.width);
@@ -414,21 +387,11 @@ bool Game::recv_state_message(Connection *connection_) {
 		player.anchored = anchored != 0;
 		read(&player.position);
 		read(&player.pp.velocity);
-		read(&player.color);
 		read(&player.sprite);
 		read(&player.jets_left);
 		uint8_t can_grab;
 		read(&can_grab);
 		player.can_grab = (can_grab != 0);
-		uint8_t name_len;
-		read(&name_len);
-		//n.b. would probably be more efficient to directly copy from recv_buffer, but I think this is clearer:
-		player.name = "";
-		for (uint8_t n = 0; n < name_len; ++n) {
-			char c;
-			read(&c);
-			player.name += c;
-		}
 	}
 
 	objects.clear();
@@ -438,7 +401,6 @@ bool Game::recv_state_message(Connection *connection_) {
 		objects.emplace_back();
 		Object &object = objects.back();
 		read(&object.position);
-		read(&object.rotation);
 		read(&object.scale);
 		read(&object.sprite);
 		read(&object.width);
