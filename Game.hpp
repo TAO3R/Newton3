@@ -45,7 +45,6 @@ struct Player {
 		Button left, right, up, down;
 		Button jet;  //push toward 'aim'
 		Button grab; //held = holding on, released = let go
-		Button board; //hold F to board
 		Button restart; //R restarts the shared round
 		Button toss; //throw what's held toward 'aim'
 
@@ -61,9 +60,6 @@ struct Player {
 
 	//player state (sent from server):
 	glm::vec2 position = glm::vec2(0.0f, 0.0f);
-
-	glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
-	std::string name = "";
 
 	//sprite used to draw this player:
 	SpriteId sprite = SpriteId::Hands;
@@ -89,7 +85,6 @@ struct Object {
 
 	//transform:
 	glm::vec2 position = glm::vec2(0.0f, 0.0f);
-	float rotation = 0.0f; //radians, around the z-axis (out of the screen)
 	glm::vec2 scale = glm::vec2(1.0f, 1.0f);
 	float width = 0.12f;	// world-space width
 
@@ -122,7 +117,7 @@ struct Game {
 
 	//constants:
 	//the update rate on the server:
-	inline static constexpr float Tick = 1.0f / 30.0f;
+	inline static constexpr float Tick = 1.0f / 60.0f;
 
 	//arena size:
 	inline static constexpr glm::vec2 ArenaMin = glm::vec2(-1.6f, -1.0f);

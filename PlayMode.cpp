@@ -109,22 +109,6 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 	if (evt.type == SDL_EVENT_KEY_DOWN) {
 		if (evt.key.repeat) {
 			//ignore repeats
-		} else if (evt.key.key == SDLK_A) {
-			controls.left.downs += 1;
-			controls.left.pressed = true;
-			return true;
-		} else if (evt.key.key == SDLK_D) {
-			controls.right.downs += 1;
-			controls.right.pressed = true;
-			return true;
-		} else if (evt.key.key == SDLK_W) {
-			controls.up.downs += 1;
-			controls.up.pressed = true;
-			return true;
-		} else if (evt.key.key == SDLK_S) {
-			controls.down.downs += 1;
-			controls.down.pressed = true;
-			return true;
 		} else if (evt.key.key == SDLK_SPACE) {
 			controls.jet.downs += 1;
 			controls.jet.pressed = true;
@@ -137,10 +121,6 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			controls.toss.downs += 1;
 			controls.toss.pressed = true;
 			return true;
-		} else if (evt.key.key == SDLK_F) {
-			controls.board.downs += 1;
-			controls.board.pressed = true;
-			return true;
 		} else if (evt.key.key == SDLK_R) {
 			controls.restart.downs += 1;
 			controls.restart.pressed = true;
@@ -150,26 +130,11 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			return true;
 		}
 	} else if (evt.type == SDL_EVENT_KEY_UP) {
-		if (evt.key.key == SDLK_A) {
-			controls.left.pressed = false;
-			return true;
-		} else if (evt.key.key == SDLK_D) {
-			controls.right.pressed = false;
-			return true;
-		} else if (evt.key.key == SDLK_W) {
-			controls.up.pressed = false;
-			return true;
-		} else if (evt.key.key == SDLK_S) {
-			controls.down.pressed = false;
-			return true;
-		} else if (evt.key.key == SDLK_SPACE) {
+		if (evt.key.key == SDLK_SPACE) {
 			controls.jet.pressed = false;
 			return true;
 		} else if (evt.key.key == SDLK_E) {
 			controls.grab.pressed = false;
-			return true;
-		} else if (evt.key.key == SDLK_F) {
-			controls.board.pressed = false;
 			return true;
 		} else if (evt.key.key == SDLK_R) {
 			controls.restart.pressed = false;
@@ -198,14 +163,9 @@ void PlayMode::update(float elapsed) {
 	controls.send_controls_message(&client.connection);
 
 	//reset button press counters:
-	controls.left.downs = 0;
-	controls.right.downs = 0;
-	controls.up.downs = 0;
-	controls.down.downs = 0;
 	controls.jet.downs = 0;
 	controls.grab.downs = 0;
 	controls.toss.downs = 0;
-	controls.board.downs = 0;
 	controls.restart.downs = 0;
 
 	//send/receive data:
@@ -325,7 +285,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			float height = width * float(sprite.size.y) / float (sprite.size.x);
 
 			glm::mat4 world_from_object = glm::translate(glm::mat4(1.0f), glm::vec3(object.position, 0.0f))
-				* glm::rotate(glm::mat4(1.0f), object.rotation, glm::vec3(0.0f, 0.0f, 1.0f))
+				* glm::rotate(glm::mat4(1.0f), 0.0f, glm::vec3(0.0f, 0.0f, 1.0f))
 				* glm::scale(glm::mat4(1.0f), glm::vec3(width * object.scale.x, height * object.scale.y, 1.0f));
 			glm::mat4 clip_from_object = world_to_clip * world_from_object;
 
@@ -374,7 +334,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				glm::vec2 start = local->position + direction * (Game::PlayerRadius + 0.035f);
 				glm::vec2 tip = start + direction * 0.18f;
 				bool available = local->jets_left > 0 && !local->anchored;
-				glm::u8vec4 color = available ? glm::u8vec4(local->color * 255.0f, 255) : glm::u8vec4(90, 90, 90, 255);
+				glm::u8vec4 color = available ? glm::u8vec4(255, 255, 255, 255) : glm::u8vec4(90, 90, 90, 255);
 				lines.draw(glm::vec3(start, 0.0f), glm::vec3(tip, 0.0f), color);
 				lines.draw(glm::vec3(tip, 0.0f), glm::vec3(tip - direction * 0.045f + side * 0.03f, 0.0f), color);
 				lines.draw(glm::vec3(tip, 0.0f), glm::vec3(tip - direction * 0.045f - side * 0.03f, 0.0f), color);
@@ -414,7 +374,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	//Use server-assigned labels: each client receives its own player first.
 	for (auto const &player : game.players) {
 		bool is_local = local && player.id == local->id;
-		TextTexture const &label = cached_text(player.name + (is_local ? " - YOU" : ""));
+		TextTexture const &label = cached_text(is_local ? "YOU" : "");
 		if (label.height == 0) continue;
 		glm::vec2 anchor = player.position + glm::vec2(0.0f, Game::PlayerRadius + 0.03f);
 		glm::vec4 clip = world_to_clip * glm::vec4(anchor, 0.0f, 1.0f);
@@ -426,7 +386,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		);
 		position.x = std::max(8.0f * ui_scale, std::min(position.x, float(drawable_size.x) - float(label.width) * text_scale - 8.0f * ui_scale));
 		text_renderer.draw_text(label, position + glm::vec2(ui_scale), text_scale, glm::vec3(0.0f), drawable_size);
-		text_renderer.draw_text(label, position, text_scale, player.color, drawable_size);
+		text_renderer.draw_text(label, position, text_scale, glm::vec3(1.0f, 1.0f, 1.0f), drawable_size);
 	}
 
 	std::string action;
@@ -538,12 +498,12 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			if (label.height == 0) continue;
 			float text_scale = 12.0f * ui_scale / float(label.height);
 			glm::vec2 position(left, (row == 0 ? 20.0f : 64.0f) * ui_scale);
-			text_renderer.draw_text(label, position, text_scale, row == 0 ? local->color : glm::vec3(0.7f), drawable_size);
+			text_renderer.draw_text(label, position, text_scale, row == 0 ? glm::vec3(1.0f, 1.0f, 1.0f) : glm::vec3(0.7f), drawable_size);
 		}
 
 		glEnable(GL_SCISSOR_TEST);
 		for (uint8_t i = 0; i < Game::JetCount; ++i) {
-			glm::vec3 color = i < local->jets_left ? local->color : glm::vec3(0.1f, 0.12f, 0.15f);
+			glm::vec3 color = i < local->jets_left ? glm::vec3(1.0f, 1.0f, 1.0f) : glm::vec3(0.1f, 0.12f, 0.15f);
 			glScissor(
 				int(left + float(i) * 34.0f * ui_scale),
 				int(float(drawable_size.y) - 50.0f * ui_scale),
