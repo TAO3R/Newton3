@@ -24,6 +24,7 @@ typedef int ssize_t;
 #include <netinet/ip.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <netinet/tcp.h>	// for TCP_NODELAY
 
 #define closesocket close
 
@@ -105,6 +106,9 @@ void poll_connections(
 		if (got == InvalidSocket) {
 			//oh well.
 		} else {
+			int nodelay = 1; // send small packets right away instead of batching (Nagle)
+			setsockopt(got, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast< const char * >(&nodelay), sizeof(nodelay));
+
 			#ifdef _WIN32
 			unsigned long one = 1;
 			if (0 == ioctlsocket(got, FIONBIO, &one)) {
@@ -351,6 +355,8 @@ Client::Client(std::string const &host, std::string const &port) : connections(1
 			}
 			std::cout << "success!" << std::endl;
 
+			int nodelay = 1;	// no batching small packets
+			setsockopt(s, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast< const char * >(&nodelay), sizeof(nodelay));
 			connection.socket = s;
 			break;
 		}

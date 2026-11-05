@@ -115,6 +115,9 @@ int main(int argc, char **argv) {
 	//------------ create game mode + make current --------------
 	Mode::set_current(std::make_shared< PlayMode >(client));
 
+	//Tell the launcher that connection, assets and the game window are ready.
+	std::cout << "NEWTON3_CLIENT_READY" << std::endl;
+
 	//------------ main loop ------------
 
 	//this inline function will be called whenever the window is resized,

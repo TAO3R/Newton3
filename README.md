@@ -12,6 +12,16 @@ Screen Shot:
 
 How To Play:
 
+Windows quick start: build with node Maekfile.js from the x64 Native Tools Command Prompt, then double-click dist/Newton3.exe.
+
+- Host: choose HOST GAME, share the displayed IP (COPY IP), then choose ENTER GAME.
+- Join: choose JOIN GAME, type or paste the host IP, then press Enter or JOIN.
+- Both computers should use the same Wi-Fi/hotspot and the same game build. The port is fixed at 11451.
+- The host server runs in the background. Leave the launcher running while playing; closing it ends its room.
+- Keep Newton3.exe, server.exe, client.exe, SDL3.dll and all assets together in dist.
+
+The launcher is Windows-only. The existing command-line client/server workflow remains available.
+
 Connect two clients to the same server. The 90-second round starts when both players join.
 Players spawn at the upper-right and lower-right. Race to the only escape pod on the left.
 

@@ -204,6 +204,16 @@ void Game::update(float elapsed) {
 			player.jets_left -= 1;
 		}
 
+		//recharge one jet at a time until full:
+		if (player.jets_left < JetCount) {
+			player.jet_recharge += elapsed;
+			if (player.jet_recharge >= JetRechargeTime) {
+				player.jet_recharge -= JetRechargeTime;
+				player.jets_left += 1;
+			}
+		}
+		if (player.jets_left == JetCount) player.jet_recharge = 0.0f;
+
 		//throw what's held toward the aim point (the thrower recoils the other way):
 		bool tossed = false;
 		if (player.controls.toss.downs > 0 && player.pp.partner.pp && to_aim != glm::vec2(0.0f)) {
@@ -327,9 +337,9 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 	//send object info helper:
 	auto send_object = [&](Object const &object) {
 		connection.send(object.position);
-		connection.send(object.scale);
-		connection.send(object.sprite);
-		connection.send(object.width);
+		// connection.send(object.scale);
+		// connection.send(object.sprite);
+		// connection.send(object.width);
 	};
 
 	//object count:
@@ -394,16 +404,12 @@ bool Game::recv_state_message(Connection *connection_) {
 		player.can_grab = (can_grab != 0);
 	}
 
-	objects.clear();
+	// objects.clear();
 	uint8_t object_count;
 	read(&object_count);
-	for (uint8_t i = 0; i < object_count; ++i) {
-		objects.emplace_back();
-		Object &object = objects.back();
+	if (object_count != objects.size()) { throw	std::runtime_error("Object count mismatch between server and client."); }
+	for (auto &object : objects) {
 		read(&object.position);
-		read(&object.scale);
-		read(&object.sprite);
-		read(&object.width);
 	}
 
 	if (at != size) throw std::runtime_error("Trailing data in state message.");
