@@ -327,9 +327,9 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 	//send object info helper:
 	auto send_object = [&](Object const &object) {
 		connection.send(object.position);
-		connection.send(object.scale);
-		connection.send(object.sprite);
-		connection.send(object.width);
+		// connection.send(object.scale);
+		// connection.send(object.sprite);
+		// connection.send(object.width);
 	};
 
 	//object count:
@@ -394,16 +394,12 @@ bool Game::recv_state_message(Connection *connection_) {
 		player.can_grab = (can_grab != 0);
 	}
 
-	objects.clear();
+	// objects.clear();
 	uint8_t object_count;
 	read(&object_count);
-	for (uint8_t i = 0; i < object_count; ++i) {
-		objects.emplace_back();
-		Object &object = objects.back();
+	if (object_count != objects.size()) { throw	std::runtime_error("Object count mismatch between server and client."); }
+	for (auto &object : objects) {
 		read(&object.position);
-		read(&object.scale);
-		read(&object.sprite);
-		read(&object.width);
 	}
 
 	if (at != size) throw std::runtime_error("Trailing data in state message.");
