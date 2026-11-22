@@ -89,39 +89,68 @@ Game::Game(Level level_) : level(level_) {
 		prop.pp.grabbable = true;
 		prop.pp.collider = PhysicsEngine::BoxCollider{ glm::vec2(0.5f * prop.width * scale) };
 	};
-	//props are a bit heavier than a player (1.0); a few start with a slow drift so the room isn't frozen:
-	add_prop(SpriteId::Cart,    glm::vec2( 0.85f,  0.65f), 1.3f, 1.5f, glm::vec2(-0.03f, 0.0f));
-	add_prop(SpriteId::Cart,    glm::vec2( 0.85f, -0.65f), 1.3f, 1.5f, glm::vec2(0.0f));
-	add_prop(SpriteId::Turbine, glm::vec2(-0.35f,  0.45f), 1.8f, 1.4f, glm::vec2(0.0f));
-	add_prop(SpriteId::Turbine, glm::vec2(-0.35f, -0.45f), 1.8f, 1.4f, glm::vec2(0.02f, 0.03f));
-	add_prop(SpriteId::PC,      glm::vec2(-1.15f,  0.75f), 1.5f, 1.3f, glm::vec2(0.0f));
-	add_prop(SpriteId::PC,      glm::vec2(-1.15f, -0.75f), 1.5f, 1.3f, glm::vec2(0.0f));
-	add_prop(SpriteId::Probe,   glm::vec2( 0.35f,  0.0f),  1.4f, 1.2f, glm::vec2(0.0f, -0.04f));
 
-	//escape chamber: fixed in place, players can hold on to it (and push off with a throw)
-	objects.emplace_back();
-	Object &chamber = objects.back();
-	chamber.sprite = SpriteId::Chamber;
-	chamber.position = EscapePosition;
-	chamber.scale = glm::vec2(EscapeHeight / chamber.width);
-	chamber.pp.type = PhysicsEngine::MovementType::Static;
-	chamber.pp.grabbable = true;
-	chamber.pp.collider = PhysicsEngine::CircleCollider{ 0.5f * EscapeHeight };
+	switch (level)
+	{
+	case Game::Level::Menu:
+		
+		break;
+	
+	case Game::Level::Solo:
+		
+		break;
+
+	case Game::Level::Arena:
+		//props are a bit heavier than a player (1.0); a few start with a slow drift so the room isn't frozen:
+		add_prop(SpriteId::Cart,    glm::vec2( 0.85f,  0.65f), 1.3f, 1.5f, glm::vec2(-0.03f, 0.0f));
+		add_prop(SpriteId::Cart,    glm::vec2( 0.85f, -0.65f), 1.3f, 1.5f, glm::vec2(0.0f));
+		add_prop(SpriteId::Turbine, glm::vec2(-0.35f,  0.45f), 1.8f, 1.4f, glm::vec2(0.0f));
+		add_prop(SpriteId::Turbine, glm::vec2(-0.35f, -0.45f), 1.8f, 1.4f, glm::vec2(0.02f, 0.03f));
+		add_prop(SpriteId::PC,      glm::vec2(-1.15f,  0.75f), 1.5f, 1.3f, glm::vec2(0.0f));
+		add_prop(SpriteId::PC,      glm::vec2(-1.15f, -0.75f), 1.5f, 1.3f, glm::vec2(0.0f));
+		add_prop(SpriteId::Probe,   glm::vec2( 0.35f,  0.0f),  1.4f, 1.2f, glm::vec2(0.0f, -0.04f));
+
+		//escape chamber: fixed in place, players can hold on to it (and push off with a throw)
+		objects.emplace_back();
+		Object &chamber = objects.back();
+		chamber.sprite = SpriteId::Chamber;
+		chamber.position = EscapePosition;
+		chamber.scale = glm::vec2(EscapeHeight / chamber.width);
+		chamber.pp.type = PhysicsEngine::MovementType::Static;
+		chamber.pp.grabbable = true;
+		chamber.pp.collider = PhysicsEngine::CircleCollider{ 0.5f * EscapeHeight };
+
+		break;
+	}
 }
 
 Player *Game::spawn_player() {
 	players.emplace_back();
 	Player &player = players.back();
-
 	player.id = next_player_id++;
-	player.position = glm::vec2(1.3f, players.size() == 1 ? 0.75f : -0.75f);
 
 	//collider matches the player's circle:
 	player.pp.collider = PhysicsEngine::CircleCollider{ PlayerRadius };
 	player.jets_left = JetCount;
 	player.pp.grip = GripImpulse;
 
-	if (players.size() == 2) start_round();
+	{	// spawn position
+		switch (level)
+		{
+		case Game::Level::Menu:
+			
+			break;
+		
+		case Game::Level::Solo:
+			
+			break;
+
+		case Game::Level::Arena:
+			player.position = glm::vec2(1.3f, players.size() == 1 ? 0.75f : -0.75f);		
+		}
+	}
+	
+	if (level != Game::Level::Arena || players.size() == 2) { start_round(); }
 	return &player;
 }
 
@@ -146,22 +175,36 @@ bool Game::in_boarding_area(glm::vec2 const &position) {
 }
 
 void Game::start_round() {
-	//Keep player addresses stable: server connections point into this list.
-	for (auto &player : players) PhysicsEngine::release({&player.position, &player.pp});
-	objects = Game().objects;
-	int slot = 0;
-	for (auto &player : players) {
-		uint32_t id = player.id;
-		player = Player();
-		player.id = id;
-		player.position = glm::vec2(1.3f, slot++ == 0 ? 0.75f : -0.75f);
-		player.pp.collider = PhysicsEngine::CircleCollider{PlayerRadius};
-		player.pp.grip = GripImpulse;
-		player.jets_left = JetCount;
+	switch (level)
+	{
+	case Game::Level::Menu:
+		/* code */
+		break;
+	
+	case Game::Level::Solo:
+		
+		break;
+
+	case Game::Level::Arena:
+		//Keep player addresses stable: server connections point into this list.
+		for (auto &player : players) PhysicsEngine::release({&player.position, &player.pp});
+		objects = Game(level).objects;
+		int slot = 0;
+		for (auto &player : players) {
+			uint32_t id = player.id;
+			player = Player();
+			player.id = id;
+			player.position = glm::vec2(1.3f, slot++ == 0 ? 0.75f : -0.75f);
+			player.pp.collider = PhysicsEngine::CircleCollider{PlayerRadius};
+			player.pp.grip = GripImpulse;
+			player.jets_left = JetCount;
+		}
+		time_left = RoundTime;
+		winner = 0;
+		match_state = MatchState::Playing;
+
+		break;
 	}
-	time_left = RoundTime;
-	winner = 0;
-	match_state = MatchState::Playing;
 }
 
 void Game::on_grab_range_enter(Player &player, Object &object) {
@@ -176,124 +219,142 @@ void Game::on_grab_range_exit(Player &player, Object &object) {
 }
 
 void Game::update(float elapsed) {
-	//Either player can restart the shared round, including during play.
-	for (auto const &player : players) {
-		if (player.controls.restart.downs > 0 && players.size() == 2) {
-			start_round();
+	{	// restart
+		bool can_restart = level == Game::Level::Solo || players.size() == 2;
+		for (auto const &player : players)
+		{
+			if (player.controls.restart.downs > 0 && can_restart)
+			{
+				start_round();
+				return;
+			}
+		}
+	}
+	
+	switch (level)
+	{
+	case Game::Level::Menu:
+		/* code */
+		break;
+	
+	case Game::Level::Solo:
+		/* code */
+		break;
+
+	case Game::Level::Arena:
+		if (match_state != MatchState::Playing) {
+			for (auto &player : players) player.controls = Player::Controls();
 			return;
 		}
-	}
-	if (match_state != MatchState::Playing) {
-		for (auto &player : players) player.controls = Player::Controls();
-		return;
-	}
-	float round_step = std::min(elapsed, time_left);
+		float round_step = std::min(elapsed, time_left);
 
-	//player actions this tick (step applies them once, then clears the lists):
-	std::vector< PhysicsEngine::Grab > grabs;
-	std::vector< PhysicsEngine::Throw > throws;
+		//player actions this tick (step applies them once, then clears the lists):
+		std::vector< PhysicsEngine::Grab > grabs;
+		std::vector< PhysicsEngine::Throw > throws;
 
-	for (auto &player : players) {
-		PhysicsEngine::Body body{&player.position, &player.pp};
+		for (auto &player : players) {
+			PhysicsEngine::Body body{&player.position, &player.pp};
 
-		//jet: one push toward the aim point per press, while jets last:
-		glm::vec2 to_aim = player.controls.aim - player.position;
-		for (uint8_t i = 0; i < player.controls.jet.downs && player.jets_left > 0; ++i) {
-			if (to_aim == glm::vec2(0.0f)) break; //no direction, don't spend the jet
-			if (!PhysicsEngine::apply_impulse(body, glm::normalize(to_aim) * JetImpulse)) break; //anchored: can't move
-			player.jets_left -= 1;
-		}
-
-		//recharge one jet at a time until full:
-		if (player.jets_left < JetCount) {
-			player.jet_recharge += elapsed;
-			if (player.jet_recharge >= JetRechargeTime) {
-				player.jet_recharge -= JetRechargeTime;
-				player.jets_left += 1;
+			//jet: one push toward the aim point per press, while jets last:
+			glm::vec2 to_aim = player.controls.aim - player.position;
+			for (uint8_t i = 0; i < player.controls.jet.downs && player.jets_left > 0; ++i) {
+				if (to_aim == glm::vec2(0.0f)) break; //no direction, don't spend the jet
+				if (!PhysicsEngine::apply_impulse(body, glm::normalize(to_aim) * JetImpulse)) break; //anchored: can't move
+				player.jets_left -= 1;
 			}
-		}
-		if (player.jets_left == JetCount) player.jet_recharge = 0.0f;
 
-		//throw what's held toward the aim point (the thrower recoils the other way):
-		bool tossed = false;
-		if (player.controls.toss.downs > 0 && player.pp.partner.pp && to_aim != glm::vec2(0.0f)) {
-			throws.push_back({body, glm::normalize(to_aim) * ThrowImpulse});
-			tossed = true;
-		}
-
-		//grab on press, let go once the key is up:
-		if (player.controls.grab.downs > 0) {
-			grabs.push_back({body, GrabRange});
-		} else if (!tossed && !player.controls.grab.pressed && player.pp.partner.pp) {
-			throws.push_back({body, glm::vec2(0.0f)});
-		}
-
-		//reset 'downs' since controls have been handled:
-		player.controls.jet.downs = 0;
-		player.controls.grab.downs = 0;
-		player.controls.toss.downs = 0;
-		player.controls.restart.downs = 0;
-	}
-
-	{ //physics: step every player and object, keeping them inside the arena
-		std::vector< PhysicsEngine::Body > bodies;
-		for (auto &p : players) bodies.push_back({&p.position, &p.pp});
-		for (auto &o : objects) bodies.push_back({&o.position, &o.pp});
-
-		int steps = int(std::round(elapsed / PhysicsEngine::physics_dt));
-		for (int s = 0; s < steps; ++s) {
-			PhysicsEngine::step(bodies, grabs, throws);
-			PhysicsEngine::confine(bodies, ArenaMin, ArenaMax);
-		}
-	}
-
-	//grab range: compare what each player could grab now with last tick, firing enter / exit for the difference
-	for (auto &player : players) {
-		PhysicsEngine::Body holder{&player.position, &player.pp};
-		std::vector< Object * > in_range;
-		if (!player.pp.partner.pp) { //already holding something: can't grab another
-			for (auto &object : objects) {
-				PhysicsEngine::Body target{&object.position, &object.pp};
-				if (PhysicsEngine::can_be_grabbed(target) && PhysicsEngine::in_reach(holder, target, GrabRange)) {
-					in_range.push_back(&object);
+			//recharge one jet at a time until full:
+			if (player.jets_left < JetCount) {
+				player.jet_recharge += elapsed;
+				if (player.jet_recharge >= JetRechargeTime) {
+					player.jet_recharge -= JetRechargeTime;
+					player.jets_left += 1;
 				}
 			}
+			if (player.jets_left == JetCount) player.jet_recharge = 0.0f;
+
+			//throw what's held toward the aim point (the thrower recoils the other way):
+			bool tossed = false;
+			if (player.controls.toss.downs > 0 && player.pp.partner.pp && to_aim != glm::vec2(0.0f)) {
+				throws.push_back({body, glm::normalize(to_aim) * ThrowImpulse});
+				tossed = true;
+			}
+
+			//grab on press, let go once the key is up:
+			if (player.controls.grab.downs > 0) {
+				grabs.push_back({body, GrabRange});
+			} else if (!tossed && !player.controls.grab.pressed && player.pp.partner.pp) {
+				throws.push_back({body, glm::vec2(0.0f)});
+			}
+
+			//reset 'downs' since controls have been handled:
+			player.controls.jet.downs = 0;
+			player.controls.grab.downs = 0;
+			player.controls.toss.downs = 0;
+			player.controls.restart.downs = 0;
 		}
 
-		//walk a copy, since exit edits grab_candidates:
-		for (Object *object : std::vector< Object * >(player.grab_candidates)) {
-			if (std::find(in_range.begin(), in_range.end(), object) == in_range.end()) on_grab_range_exit(player, *object);
-		}
-		for (Object *object : in_range) {
-			auto const &candidates = player.grab_candidates;
-			if (std::find(candidates.begin(), candidates.end(), object) == candidates.end()) on_grab_range_enter(player, *object);
-		}
-	}
-	//After physics, only a slow player holding F inside the area may board.
-	float first_finish = round_step + 1.0f;
-	bool tied = false;
-	for (auto &player : players) {
-		player.holding = player.pp.partner.pp != nullptr;
-		player.anchored = player.holding && player.pp.partner.pp->type == PhysicsEngine::MovementType::Static;
-		bool eligible = in_boarding_area(player.position)
-			&& glm::dot(player.pp.velocity, player.pp.velocity) <= BoardingSpeed * BoardingSpeed;
-		if (eligible) {
-			float finish = BoardingTime - player.boarding;
-			player.boarding = std::min(BoardingTime, player.boarding + round_step);
-			if (finish <= round_step + 0.00001f) {
-				if (finish < first_finish - 0.00001f) {
-					first_finish = finish;
-					winner = player.id;
-					tied = false;
-				} else if (std::abs(finish - first_finish) <= 0.00001f) tied = true;
+		{ //physics: step every player and object, keeping them inside the arena
+			std::vector< PhysicsEngine::Body > bodies;
+			for (auto &p : players) bodies.push_back({&p.position, &p.pp});
+			for (auto &o : objects) bodies.push_back({&o.position, &o.pp});
+
+			int steps = int(std::round(elapsed / PhysicsEngine::physics_dt));
+			for (int s = 0; s < steps; ++s) {
+				PhysicsEngine::step(bodies, grabs, throws);
+				PhysicsEngine::confine(bodies, ArenaMin, ArenaMax);
 			}
-		} else player.boarding = 0.0f;
+		}
+
+		//grab range: compare what each player could grab now with last tick, firing enter / exit for the difference
+		for (auto &player : players) {
+			PhysicsEngine::Body holder{&player.position, &player.pp};
+			std::vector< Object * > in_range;
+			if (!player.pp.partner.pp) { //already holding something: can't grab another
+				for (auto &object : objects) {
+					PhysicsEngine::Body target{&object.position, &object.pp};
+					if (PhysicsEngine::can_be_grabbed(target) && PhysicsEngine::in_reach(holder, target, GrabRange)) {
+						in_range.push_back(&object);
+					}
+				}
+			}
+
+			//walk a copy, since exit edits grab_candidates:
+			for (Object *object : std::vector< Object * >(player.grab_candidates)) {
+				if (std::find(in_range.begin(), in_range.end(), object) == in_range.end()) on_grab_range_exit(player, *object);
+			}
+			for (Object *object : in_range) {
+				auto const &candidates = player.grab_candidates;
+				if (std::find(candidates.begin(), candidates.end(), object) == candidates.end()) on_grab_range_enter(player, *object);
+			}
+		}
+		//After physics, only a slow player holding F inside the area may board.
+		float first_finish = round_step + 1.0f;
+		bool tied = false;
+		for (auto &player : players) {
+			player.holding = player.pp.partner.pp != nullptr;
+			player.anchored = player.holding && player.pp.partner.pp->type == PhysicsEngine::MovementType::Static;
+			bool eligible = in_boarding_area(player.position)
+				&& glm::dot(player.pp.velocity, player.pp.velocity) <= BoardingSpeed * BoardingSpeed;
+			if (eligible) {
+				float finish = BoardingTime - player.boarding;
+				player.boarding = std::min(BoardingTime, player.boarding + round_step);
+				if (finish <= round_step + 0.00001f) {
+					if (finish < first_finish - 0.00001f) {
+						first_finish = finish;
+						winner = player.id;
+						tied = false;
+					} else if (std::abs(finish - first_finish) <= 0.00001f) tied = true;
+				}
+			} else player.boarding = 0.0f;
+		}
+		time_left = std::max(0.0f, time_left - round_step);
+		if (winner != 0) {
+			match_state = tied ? MatchState::Draw : MatchState::Escaped;
+			if (tied) winner = 0;
+		} else if (time_left <= 0.0f) match_state = MatchState::Timeout;
+		break;
 	}
-	time_left = std::max(0.0f, time_left - round_step);
-	if (winner != 0) {
-		match_state = tied ? MatchState::Draw : MatchState::Escaped;
-		if (tied) winner = 0;
-	} else if (time_left <= 0.0f) match_state = MatchState::Timeout;
 }
 
 

@@ -126,6 +126,7 @@ struct Game {
 	//  Will move "connection_player" to the front of the front of the sent list.
 	void send_state_message(Connection *connection, Player *connection_player = nullptr) const;
 
+	// level of the game
 	enum class Level : uint8_t {
 		Menu = 0,
 		Solo = 1,
