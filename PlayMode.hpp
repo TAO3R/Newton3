@@ -13,7 +13,8 @@
 #include <deque>
 
 struct PlayMode : Mode {
-	PlayMode(Client &client);
+	PlayMode(Game::Level level);
+	PlayMode(std::string const &host, std::string const &port);
 	virtual ~PlayMode();
 
 	//functions called by main loop:
@@ -43,9 +44,6 @@ struct PlayMode : Mode {
 	//last message from server:
 	std::string server_message;
 
-	//connection to server:
-	Client &client;
-
 	//Cached Outfit text textures, shared by scene labels and future UI.
 	TextRenderer text_renderer;
 	std::map< std::string, TextTexture > text_cache;
@@ -57,4 +55,21 @@ struct PlayMode : Mode {
 	bool show_sprite_bounds = false;
 
 	GLuint vbo = 0, vao = 0;
+
+	std::unique_ptr< Client >  client;	// null = local play
+	float tick_acc = 0.0f;	// local fixed-step accumulator
+};
+
+struct MenuMode : PlayMode
+{
+	MenuMode() : PlayMode(Game::Level::Menu) {}
+	virtual void update(float elapsed) override
+	{
+		PlayMode::update(elapsed);
+
+		{	// Mode Change
+
+		}
+	}
+	virtual void draw(glm::uvec2 const &drawable_size) override;
 };

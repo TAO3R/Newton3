@@ -16,8 +16,7 @@
 #include <cmath>
 #include <cstdio>
 
-PlayMode::PlayMode(Client &client_) : client(client_), text_renderer(data_path("Outfit-Regular.ttf")) {
-
+PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Outfit-Regular.ttf")) {
 	{ //upload sprite textures (order must match SpriteId):
 		for (auto name : {"default.png", "hands.png", "cart.png", "pc.png", "probe.png", "turbine.png", "cryosleep_chamber.png"}) {
 			Sprite sprite = sl.load_sprite(name);
@@ -26,70 +25,78 @@ PlayMode::PlayMode(Client &client_) : client(client_), text_renderer(data_path("
 		sl.upload_sprites();
 	}
 
-	//Common labels; changing match text is cached when first displayed.
-	text_cache.emplace("01:30", text_renderer.make_text("01:30"));
-	text_cache.emplace("ESCAPE POD", text_renderer.make_text("ESCAPE POD"));
-	text_cache.emplace("E - GRAB", text_renderer.make_text("E - GRAB"));
-	for (auto text : {
-		"BOARDING", "YOU ESCAPED", "LEFT BEHIND", "TIME'S UP",
-		"You secured the only escape pod.", "Your opponent took the escape pod.",
-		"Neither player escaped in time."
-	}) {
-		text_cache.emplace(text, text_renderer.make_text(text));
+	{	// text setup
+		//Common labels; changing match text is cached when first displayed.
+		text_cache.emplace("01:30", text_renderer.make_text("01:30"));
+		text_cache.emplace("ESCAPE POD", text_renderer.make_text("ESCAPE POD"));
+		text_cache.emplace("E - GRAB", text_renderer.make_text("E - GRAB"));
+		for (auto text : {
+			"BOARDING", "YOU ESCAPED", "LEFT BEHIND", "TIME'S UP",
+			"You secured the only escape pod.", "Your opponent took the escape pod.",
+			"Neither player escaped in time."
+		}) {
+			text_cache.emplace(text, text_renderer.make_text(text));
+		}
 	}
 
-	glGenBuffers(1, &vbo);
+	{	// vao setup
+		glGenBuffers(1, &vbo);
 
-	glGenVertexArrays(1, &vao);
-	glBindVertexArray(vao);
-	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-	//unit quad centered on the origin (two triangles); each sprite is placed via CLIP_FROM_OBJECT:
-	SpriteVertex const quad[6] = {
-		{ glm::vec2(-0.5f,-0.5f), glm::vec2(0.0f, 0.0f), glm::u8vec4(0xff) },
-		{ glm::vec2( 0.5f,-0.5f), glm::vec2(1.0f, 0.0f), glm::u8vec4(0xff) },
-		{ glm::vec2( 0.5f, 0.5f), glm::vec2(1.0f, 1.0f), glm::u8vec4(0xff) },
-		{ glm::vec2(-0.5f,-0.5f), glm::vec2(0.0f, 0.0f), glm::u8vec4(0xff) },
-		{ glm::vec2( 0.5f, 0.5f), glm::vec2(1.0f, 1.0f), glm::u8vec4(0xff) },
-		{ glm::vec2(-0.5f, 0.5f), glm::vec2(0.0f, 1.0f), glm::u8vec4(0xff) },
-	};
-	glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+		//unit quad centered on the origin (two triangles); each sprite is placed via CLIP_FROM_OBJECT:
+		SpriteVertex const quad[6] = {
+			{ glm::vec2(-0.5f,-0.5f), glm::vec2(0.0f, 0.0f), glm::u8vec4(0xff) },
+			{ glm::vec2( 0.5f,-0.5f), glm::vec2(1.0f, 0.0f), glm::u8vec4(0xff) },
+			{ glm::vec2( 0.5f, 0.5f), glm::vec2(1.0f, 1.0f), glm::u8vec4(0xff) },
+			{ glm::vec2(-0.5f,-0.5f), glm::vec2(0.0f, 0.0f), glm::u8vec4(0xff) },
+			{ glm::vec2( 0.5f, 0.5f), glm::vec2(1.0f, 1.0f), glm::u8vec4(0xff) },
+			{ glm::vec2(-0.5f, 0.5f), glm::vec2(0.0f, 1.0f), glm::u8vec4(0xff) },
+		};
+		glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
 
-	glVertexAttribPointer(
-		color_texture_program->Position_vec4,
-		2,
-		GL_FLOAT,
-		GL_FALSE,
-		sizeof(SpriteVertex),
-		(GLbyte *)0 + offsetof(SpriteVertex, position)
-	);
-	glEnableVertexAttribArray(color_texture_program->Position_vec4);
+		glVertexAttribPointer(
+			color_texture_program->Position_vec4,
+			2,
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(SpriteVertex),
+			(GLbyte *)0 + offsetof(SpriteVertex, position)
+		);
+		glEnableVertexAttribArray(color_texture_program->Position_vec4);
 
-	glVertexAttribPointer(
-		color_texture_program->TexCoord_vec2,
-		2,
-		GL_FLOAT,
-		GL_FALSE,
-		sizeof(SpriteVertex),
-		(GLbyte *)0 + offsetof(SpriteVertex, texCoord)
-	);
-	glEnableVertexAttribArray(color_texture_program->TexCoord_vec2);
+		glVertexAttribPointer(
+			color_texture_program->TexCoord_vec2,
+			2,
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(SpriteVertex),
+			(GLbyte *)0 + offsetof(SpriteVertex, texCoord)
+		);
+		glEnableVertexAttribArray(color_texture_program->TexCoord_vec2);
 
-	glVertexAttribPointer(
-		color_texture_program->Color_vec4,
-		4,
-		GL_UNSIGNED_BYTE,
-		GL_TRUE,
-		sizeof(SpriteVertex),
-		(GLbyte *)0 + offsetof(SpriteVertex, color)
-	);
-	glEnableVertexAttribArray(color_texture_program->Color_vec4);
+		glVertexAttribPointer(
+			color_texture_program->Color_vec4,
+			4,
+			GL_UNSIGNED_BYTE,
+			GL_TRUE,
+			sizeof(SpriteVertex),
+			(GLbyte *)0 + offsetof(SpriteVertex, color)
+		);
+		glEnableVertexAttribArray(color_texture_program->Color_vec4);
 
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	glBindVertexArray(0);
+		glBindVertexArray(0);
 
-	GL_ERRORS();
+		GL_ERRORS();
+	}
+}
+
+PlayMode::PlayMode(std::string const &host, std::string const &port) : PlayMode(Game::Level::Arena) {
+	client = std::make_unique< Client >(host, port);
 }
 
 PlayMode::~PlayMode() {
@@ -156,49 +163,80 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 
 void PlayMode::update(float elapsed) {
 
-	//aim at the mouse, in world space:
-	controls.aim = glm::vec2(world_from_clip * glm::vec4(mouse_clip, 0.0f, 1.0f));
-
-	//queue data for sending to server:
-	controls.send_controls_message(&client.connection);
-
-	//reset button press counters:
-	controls.jet.downs = 0;
-	controls.grab.downs = 0;
-	controls.toss.downs = 0;
-	controls.restart.downs = 0;
-
-	//send/receive data:
-	client.poll([this](Connection *c, Connection::Event event){
-		if (event == Connection::OnOpen) {
-			std::cout << "[" << c->socket << "] opened" << std::endl;
-		} else if (event == Connection::OnClose) {
-			std::cout << "[" << c->socket << "] closed (!)" << std::endl;
-			throw std::runtime_error("Lost connection to server!");
-		} else { assert(event == Connection::OnRecv);
-			//std::cout << "[" << c->socket << "] recv'd data. Current buffer:\n" << hex_dump(c->recv_buffer); std::cout.flush(); //DEBUG
-			bool handled_message;
-			try {
-				do {
-					handled_message = false;
-					if (game.recv_state_message(c)) handled_message = true;
-				} while (handled_message);
-			} catch (std::exception const &e) {
-				std::cerr << "[" << c->socket << "] malformed message from server: " << e.what() << std::endl;
-				//quit the game:
-				throw e;
-			}
-		}
-	}, 0.0);
-
-	//grab prompt over the local player (the server sends it first):
-	if (game.players.empty()) {
-		set_grab_prompt(glm::vec2(0.0f), false);
-	} else {
-		Player const &local = game.players.front();
-		set_grab_prompt(local.position, local.can_grab);
+	{	// process controls
+		//aim at the mouse, in world space:
+		controls.aim = glm::vec2(world_from_clip * glm::vec4(mouse_clip, 0.0f, 1.0f));
 	}
-}
+	
+	if (client)	// process at server
+	{
+		//queue data for sending to server:
+		controls.send_controls_message(&client->connection);
+
+		//reset button press counters:
+		controls.jet.downs = 0;
+		controls.grab.downs = 0;
+		controls.toss.downs = 0;
+		controls.restart.downs = 0;
+		
+		//send/receive data:
+		client->poll([this](Connection *c, Connection::Event event){
+			if (event == Connection::OnOpen) {
+				std::cout << "[" << c->socket << "] opened" << std::endl;
+			} else if (event == Connection::OnClose) {
+				std::cout << "[" << c->socket << "] closed (!)" << std::endl;
+				throw std::runtime_error("Lost connection to server!");
+			} else { assert(event == Connection::OnRecv);
+				//std::cout << "[" << c->socket << "] recv'd data. Current buffer:\n" << hex_dump(c->recv_buffer); std::cout.flush(); //DEBUG
+				bool handled_message;
+				try {
+					do {
+						handled_message = false;
+						if (game.recv_state_message(c)) handled_message = true;
+					} while (handled_message);
+				} catch (std::exception const &e) {
+					std::cerr << "[" << c->socket << "] malformed message from server: " << e.what() << std::endl;
+					//quit the game:
+					throw e;
+				}
+			}
+		}, 0.0);
+
+		//grab prompt over the local player (the server sends it first):
+		if (game.players.empty()) {
+			set_grab_prompt(glm::vec2(0.0f), false);
+		} else {
+			Player const &local = game.players.front();
+			set_grab_prompt(local.position, local.can_grab);
+		}
+	}
+	else	// process locally
+	{
+		// first run
+		if (game.players.empty())
+		{
+			game.spawn_player();
+			game.start_round();
+		}
+		
+		Player &local = game.players.front();;
+		auto feed = [](Button &to, Button &from) { to.downs += from.downs; to.pressed = from.pressed; from.downs = 0; };
+		feed(local.controls.jet, controls.jet);
+		feed(local.controls.grab, controls.grab);
+		feed(local.controls.toss, controls.toss);
+		feed(local.controls.restart, controls.restart);
+		local.controls.aim = controls.aim;
+
+		// update game with fixed ticks
+		tick_acc += elapsed;
+		while (tick_acc >= Game::Tick)
+		{
+			game.update(Game::Tick);
+			tick_acc -= Game::Tick;
+		}
+	}
+	
+}	// end of update
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
 

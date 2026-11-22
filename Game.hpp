@@ -100,8 +100,6 @@ struct Game {
 
 	std::list< Object > objects; //non-player objects
 
-	Game();
-
 	enum class MatchState : uint8_t { Waiting, Playing, Escaped, Timeout, Disconnected, Draw };
 	MatchState match_state = MatchState::Waiting;
 	float time_left = 90.0f;
@@ -115,6 +113,27 @@ struct Game {
 
 	//state update function:
 	void update(float elapsed);
+
+	//---- communication helpers ----
+
+	//used by client:
+	//set game state from data in connection buffer
+	// (return true if data was read)
+	bool recv_state_message(Connection *connection);
+
+	//used by server:
+	//send game state.
+	//  Will move "connection_player" to the front of the front of the sent list.
+	void send_state_message(Connection *connection, Player *connection_player = nullptr) const;
+
+	enum class Level : uint8_t {
+		Menu = 0,
+		Solo = 1,
+		Arena = 2,
+		Count = 3
+	};
+	Game(Level level = Level::Arena);
+	Level level;
 
 	//constants:
 	//the update rate on the server:
@@ -142,17 +161,4 @@ struct Game {
 	//grab range bookkeeping, called by update when an object comes into / leaves a player's reach:
 	void on_grab_range_enter(Player &player, Object &object);
 	void on_grab_range_exit(Player &player, Object &object);
-
-
-	//---- communication helpers ----
-
-	//used by client:
-	//set game state from data in connection buffer
-	// (return true if data was read)
-	bool recv_state_message(Connection *connection);
-
-	//used by server:
-	//send game state.
-	//  Will move "connection_player" to the front of the front of the sent list.
-	void send_state_message(Connection *connection, Player *connection_player = nullptr) const;
 };

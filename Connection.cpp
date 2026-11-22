@@ -369,7 +369,6 @@ Client::Client(std::string const &host, std::string const &port) : connections(1
 	}
 }
 
-
 void Client::poll(std::function< void(Connection *, Connection::Event event) > const &on_event, double timeout) {
 	poll_connections("Client::poll", connections, on_event, timeout, InvalidSocket);
 }
