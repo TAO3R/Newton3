@@ -159,7 +159,9 @@ const client_names = [
 	maek.CPP('Sound.cpp'),
 	maek.CPP('load_wav.cpp'),
 	maek.CPP('load_opus.cpp'),
-	maek.CPP('SpriteLoader.cpp')
+	maek.CPP('SpriteLoader.cpp'),
+	maek.CPP('GP26IntroMode.cpp'),
+	maek.CPP('MenuMode.cpp')
 ];
 
 const server_names = [

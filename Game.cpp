@@ -76,7 +76,7 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 
 //-----------------------------------------
 
-Game::Game() {
+Game::Game(Level level_) : level(level_) {
 	//map props: free-floating, grabbable, box collider covering the sprite (all prop pngs are square):
 	auto add_prop = [&](SpriteId sprite, glm::vec2 const &position, float scale, float mass, glm::vec2 const &drift) {
 		objects.emplace_back();

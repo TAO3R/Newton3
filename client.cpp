@@ -6,6 +6,7 @@
 #include "Sound.hpp"
 #include "GL.hpp"
 #include "load_save_png.hpp"
+#include "GP26IntroMode.hpp"
 
 //Includes for libSDL:
 #include <SDL3/SDL.h>
@@ -35,14 +36,23 @@ int main(int argc, char **argv) {
 	//when compiled on windows, unhandled exceptions don't have their message printed, which can make debugging simple issues difficult.
 	try {
 #endif
+		
+	std::string host = "localhost";
+	std::string port = "11451";
+
 	//------------ command line arguments ------------
 	if (argc != 3) {
-		std::cerr << "Usage:\n\t./client <host> <port>" << std::endl;
-		return 1;
+		std::cout << "Usage:\n\t./client <host> <port>" << std::endl;
+		// eturn 1;
+	}
+	else
+	{
+		host = argv[1];
+		port = argv[2];
 	}
 
 	//------------ connect to server --------------
-	Client client(argv[1], argv[2]);
+	// Client client(argv[1], argv[2]);
 
 	//------------  initialization ------------
 
@@ -112,8 +122,11 @@ int main(int argc, char **argv) {
 	//------------ load assets --------------
 	call_load_functions();
 
-	//------------ create game mode + make current --------------
-	Mode::set_current(std::make_shared< PlayMode >(client));
+	//------------ 15666 f26 Intro Mode + create game mode + make current ------------
+	Mode::set_current(
+		std::make_shared< GP26IntroMode >( [host, port](){	
+			Mode::set_current(std::make_shared< PlayMode >(Game::Level::Arena));
+		}));
 
 	//Tell the launcher that connection, assets and the game window are ready.
 	std::cout << "NEWTON3_CLIENT_READY" << std::endl;
