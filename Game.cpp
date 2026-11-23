@@ -377,6 +377,7 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(uint8_t(player.holding));
 		connection.send(uint8_t(player.anchored));
 		connection.send(player.position);
+		connection.send(player.rotation);
 		connection.send(player.pp.velocity);
 		connection.send(player.sprite);
 		connection.send(player.jets_left);
@@ -398,6 +399,7 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 	//send object info helper:
 	auto send_object = [&](Object const &object) {
 		connection.send(object.position);
+		connection.send(object.rotation);
 		// connection.send(object.scale);
 		// connection.send(object.sprite);
 		// connection.send(object.width);
@@ -457,6 +459,7 @@ bool Game::recv_state_message(Connection *connection_) {
 		player.holding = holding != 0;
 		player.anchored = anchored != 0;
 		read(&player.position);
+		read(&player.rotation);
 		read(&player.pp.velocity);
 		read(&player.sprite);
 		read(&player.jets_left);
@@ -471,6 +474,7 @@ bool Game::recv_state_message(Connection *connection_) {
 	if (object_count != objects.size()) { throw	std::runtime_error("Object count mismatch between server and client."); }
 	for (auto &object : objects) {
 		read(&object.position);
+		read(&object.rotation);
 	}
 
 	if (at != size) throw std::runtime_error("Trailing data in state message.");

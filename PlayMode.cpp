@@ -265,10 +265,12 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	{
 	case Game::Level::Menu:
 		/* code */
+
 		break;
 	
 	case Game::Level::Solo:
 		/* code */
+
 		break;
 
 	case Game::Level::Arena:
@@ -325,14 +327,23 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			2.0f * aspect / (Game::ArenaMax.x - Game::ArenaMin.x + 2.0f * Game::PlayerRadius),
 			2.0f * arena_height / float(drawable_size.y) / (Game::ArenaMax.y - Game::ArenaMin.y + 2.0f * Game::PlayerRadius)
 		);
-		glm::vec2 offset = -0.5f * (Game::ArenaMax + Game::ArenaMin);
+		// glm::vec2 offset = -0.5f * (Game::ArenaMax + Game::ArenaMin);
+		
+		// view: inverse of the caemra's transform (undo translation, then undo rotation)
+		glm::mat4 view_from_world = glm::rotate(glm::mat4(1.0f), -game.camera.rotation, glm::vec3(0.0f, 0.0f, 1.0f))
+			* glm::translate(glm::mat4(1.0f), glm::vec3(-game.camera.position, 0.0f));
+		
+		// projection: fit-to-window scale, aspect correction, shift for header/footer UI
+		glm::mat4 clip_from_view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, (footer_height - header_height) / float(drawable_size.y), 0.0f))
+			* glm::scale(glm::mat4(1.0f), glm::vec3(scale * 1.0f / aspect, scale * 1.0f, 1.0f));
 
-		glm::mat4 world_to_clip = glm::mat4(
-			scale / aspect, 0.0f, 0.0f, 0.0f,
-			0.0f, scale, 0.0f, 0.0f,
-			0.0f, 0.0f, 1.0f, 0.0f,
-			offset.x * scale / aspect, offset.y * scale + (footer_height - header_height) / float(drawable_size.y), 0.0f, 1.0f
-		);
+		glm::mat4 world_to_clip = clip_from_view * view_from_world;
+		// glm::mat4 world_to_clip = glm::mat4(
+		// 	scale / aspect, 0.0f, 0.0f, 0.0f,
+		// 	0.0f, scale, 0.0f, 0.0f,
+		// 	0.0f, 0.0f, 1.0f, 0.0f,
+		// 	offset.x * scale / aspect, offset.y * scale + (footer_height - header_height) / float(drawable_size.y), 0.0f, 1.0f
+		// );
 		world_from_clip = glm::inverse(world_to_clip); //for turning the mouse into an aim point
 
 		//world-space quad corners of each drawn sprite (4 per sprite), outlined later if show_sprite_bounds:
