@@ -23,7 +23,20 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Ou
 			Sprite sprite = sl.load_sprite(name);
 			sl.add_sprite(sprite);
 		}
+		//HUD states are appended in order: zero to three jets.
+		for (auto name : {"hud_jet_0.png", "hud_jet_1.png", "hud_jet_2.png", "hud_jet_3.png"}) {
+			Sprite sprite = sl.load_sprite(name);
+			sl.add_sprite(sprite);
+		}
 		sl.upload_sprites();
+
+		//Smooth HUD images; world sprites stay pixel sharp.
+		for (size_t i = sl.sprites.size() - 4; i < sl.sprites.size(); ++i) {
+			glBindTexture(GL_TEXTURE_2D, sl.sprites[i].tex);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		}
+		glBindTexture(GL_TEXTURE_2D, 0);
 	}
 
 	{	// text setup
@@ -101,6 +114,9 @@ PlayMode::PlayMode(std::string const &host, std::string const &port) : PlayMode(
 }
 
 PlayMode::~PlayMode() {
+	for (size_t i = sl.sprites.size() - 4; i < sl.sprites.size(); ++i) {
+		glDeleteTextures(1, &sl.sprites[i].tex);
+	}
 	for (auto &entry : text_cache) {
 		text_renderer.destroy_text(entry.second);
 	}
@@ -316,57 +332,54 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		//world-space quad corners of each drawn sprite (4 per sprite), outlined later if show_sprite_bounds:
 		std::vector< glm::vec2 > sprite_corners;
 
-		{ //draw sprites (before lines, so lines and names end up on top):
+		auto draw_sprite = [&](Object const &object, glm::mat4 const &to_clip, bool world_space = true) {
+			if (size_t(object.sprite) >= sl.sprites.size()) return; //bad id from server
+			Sprite const &sprite = sl.sprites[size_t(object.sprite)];
+
+			//world-space size: height follows the image's aspect ratio:
+			float width = object.width;
+			float height = width * float(sprite.size.y) / float (sprite.size.x);
+
+			glm::mat4 world_from_object = glm::translate(glm::mat4(1.0f), glm::vec3(object.position, 0.0f))
+				* glm::rotate(glm::mat4(1.0f), 0.0f, glm::vec3(0.0f, 0.0f, 1.0f))
+				* glm::scale(glm::mat4(1.0f), glm::vec3(width * object.scale.x, height * object.scale.y, 1.0f));
+			glm::mat4 clip_from_object = to_clip * world_from_object;
+
+			if (show_sprite_bounds && world_space) {
+				//quad corners in order around the edge (skips the shared diagonal):
+				for (glm::vec2 c : {glm::vec2(-0.5f,-0.5f), glm::vec2(0.5f,-0.5f), glm::vec2(0.5f,0.5f), glm::vec2(-0.5f,0.5f)}) {
+					sprite_corners.emplace_back(world_from_object * glm::vec4(c, 0.0f, 1.0f));
+				}
+			}
+
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
 			glUseProgram(color_texture_program->program);
 			glBindVertexArray(vao);
 			glActiveTexture(GL_TEXTURE0);
 
-			auto draw_sprite = [&](Object const &object) {
-				if (size_t(object.sprite) >= sl.sprites.size()) return; //bad id from server
-				Sprite const &sprite = sl.sprites[size_t(object.sprite)];
+			glUniformMatrix4fv(color_texture_program->CLIP_FROM_OBJECT_mat4, 1, GL_FALSE, glm::value_ptr(clip_from_object));
 
-				//world-space size: height follows the image's aspect ratio:
-				float width = object.width;
-				float height = width * float(sprite.size.y) / float (sprite.size.x);
-
-				glm::mat4 world_from_object = glm::translate(glm::mat4(1.0f), glm::vec3(object.position, 0.0f))
-					* glm::rotate(glm::mat4(1.0f), 0.0f, glm::vec3(0.0f, 0.0f, 1.0f))
-					* glm::scale(glm::mat4(1.0f), glm::vec3(width * object.scale.x, height * object.scale.y, 1.0f));
-				glm::mat4 clip_from_object = world_to_clip * world_from_object;
-
-				if (show_sprite_bounds) {
-					//quad corners in order around the edge (skips the shared diagonal):
-					for (glm::vec2 c : {glm::vec2(-0.5f,-0.5f), glm::vec2(0.5f,-0.5f), glm::vec2(0.5f,0.5f), glm::vec2(-0.5f,0.5f)}) {
-						sprite_corners.emplace_back(world_from_object * glm::vec4(c, 0.0f, 1.0f));
-					}
-				}
-
-				glUniformMatrix4fv(color_texture_program->CLIP_FROM_OBJECT_mat4, 1, GL_FALSE, glm::value_ptr(clip_from_object));
-
-				glBindTexture(GL_TEXTURE_2D, sprite.tex);
-				glDrawArrays(GL_TRIANGLES, 0, 6);
-			};
-			//props and chamber come from the server:
-			for (auto const &object : game.objects) {
-				draw_sprite(object);
-			}
-
-			//players on top, one player diameter wide:
-			for (auto const &player : game.players) {
-				Object body;
-				body.sprite = player.sprite;
-				body.position = player.position;
-				body.width = 2.0f * Game::PlayerRadius;
-				draw_sprite(body);
-			}
-
+			glBindTexture(GL_TEXTURE_2D, sprite.tex);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
 			glBindTexture(GL_TEXTURE_2D, 0);
 			glBindVertexArray(0);
 			glUseProgram(0);
 			glDisable(GL_BLEND);
+		};
+
+		//props and chamber come from the server:
+		for (auto const &object : game.objects) {
+			draw_sprite(object, world_to_clip);
+		}
+
+		//players on top, one player diameter wide:
+		for (auto const &player : game.players) {
+			Object body;
+			body.sprite = player.sprite;
+			body.position = player.position;
+			body.width = 2.0f * Game::PlayerRadius;
+			draw_sprite(body, world_to_clip);
 		}
 
 		{
@@ -534,34 +547,33 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		}
 
 		if (local && result == 0) {
-			//Dedicated jet HUD: each illuminated cell is one remaining burst.
-			float left = float(drawable_size.x) - 190.0f * ui_scale;
-			std::string count = "JETS " + std::to_string(local->jets_left) + "/" + std::to_string(Game::JetCount);
-			std::string hint = "SPACE - BOOST";
-			if (!playing) hint = "WAITING";
-			else if (local->jets_left == 0) hint = "NO JETS LEFT";
-			else if (local->anchored) hint = "RELEASE E TO BOOST";
+			//Screen-space jet HUD.
+			glm::vec2 center = glm::vec2(68.0f, 60.0f) * ui_scale;
+			glm::mat4 pixel_to_clip = glm::ortho(0.0f, float(drawable_size.x), float(drawable_size.y), 0.0f);
+			glm::vec3 cyan(0.65f, 0.94f, 0.96f);
+			//Select the complete HUD image using the synchronized jet count.
+			size_t jets = std::min(size_t(local->jets_left), size_t(3));
+			Object portrait;
+			portrait.sprite = SpriteId(sl.sprites.size() - 4 + jets);
+			portrait.position = center;
+			portrait.width = 150.0f * ui_scale;
+			portrait.scale.y = -1.0f; //Screen coordinates point down; PNG textures point up.
+			draw_sprite(portrait, pixel_to_clip, false);
 
-			for (int row = 0; row < 2; ++row) {
-				TextTexture const &label = cached_text(row == 0 ? count : hint);
+			char const *hint = "READY";
+			if (!playing) hint = "WAITING";
+			else if (local->jets_left == 0) hint = "RECHARGING";
+			else if (local->anchored) hint = "ANCHORED";
+			char const *state = local->anchored ? "STATE: ANCHORED" : local->holding ? "STATE: HOLDING" : "STATE: FREE";
+			std::array< char const *, 3 > labels = {"JET ENERGY", hint, state};
+			for (size_t row = 0; row < labels.size(); ++row) {
+				TextTexture const &label = cached_text(labels[row]);
 				if (label.height == 0) continue;
 				float text_scale = 12.0f * ui_scale / float(label.height);
-				glm::vec2 position(left, (row == 0 ? 20.0f : 64.0f) * ui_scale);
-				text_renderer.draw_text(label, position, text_scale, row == 0 ? glm::vec3(1.0f, 1.0f, 1.0f) : glm::vec3(0.7f), drawable_size);
+				glm::vec2 position = glm::vec2(128.0f, 26.0f + float(row) * 25.0f) * ui_scale;
+				glm::vec3 color = row == 2 ? glm::vec3(0.94f, 0.89f, 0.76f) : cyan;
+				text_renderer.draw_text(label, position, text_scale, color, drawable_size);
 			}
-
-			glEnable(GL_SCISSOR_TEST);
-			for (uint8_t i = 0; i < Game::JetCount; ++i) {
-				glm::vec3 color = i < local->jets_left ? glm::vec3(1.0f, 1.0f, 1.0f) : glm::vec3(0.1f, 0.12f, 0.15f);
-				glScissor(
-					int(left + float(i) * 34.0f * ui_scale),
-					int(float(drawable_size.y) - 50.0f * ui_scale),
-					int(28.0f * ui_scale), int(8.0f * ui_scale)
-				);
-				glClearColor(color.r, color.g, color.b, 1.0f);
-				glClear(GL_COLOR_BUFFER_BIT);
-			}
-			glDisable(GL_SCISSOR_TEST);
 		}
 
 		if (result != 0) {
