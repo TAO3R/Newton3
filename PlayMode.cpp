@@ -23,6 +23,8 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Ou
 			Sprite sprite = sl.load_sprite(name);
 			sl.add_sprite(sprite);
 		}
+		Sprite hands = sl.load_sprite("hud_hands.png");
+		sl.add_sprite(hands);
 		Sprite helmet = sl.load_sprite("hud_helmet.png");
 		sl.add_sprite(helmet);
 		//HUD states are appended in order: zero to three jets.
@@ -33,7 +35,7 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Ou
 		sl.upload_sprites();
 
 		//Smooth HUD images; world sprites stay pixel sharp.
-		for (size_t i = sl.sprites.size() - 5; i < sl.sprites.size(); ++i) {
+		for (size_t i = sl.sprites.size() - 6; i < sl.sprites.size(); ++i) {
 			glBindTexture(GL_TEXTURE_2D, sl.sprites[i].tex);
 			//HUD PNG colors are sRGB; decode before framebuffer encoding.
 			Sprite const &sprite = sl.sprites[i];
@@ -120,7 +122,7 @@ PlayMode::PlayMode(std::string const &host, std::string const &port) : PlayMode(
 }
 
 PlayMode::~PlayMode() {
-	for (size_t i = sl.sprites.size() - 5; i < sl.sprites.size(); ++i) {
+	for (size_t i = sl.sprites.size() - 6; i < sl.sprites.size(); ++i) {
 		glDeleteTextures(1, &sl.sprites[i].tex);
 	}
 	for (auto &entry : text_cache) {
@@ -592,15 +594,39 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			if (!playing) hint = "WAITING";
 			else if (local->jets_left == 0) hint = "RECHARGING";
 			else if (local->anchored) hint = "ANCHORED";
-			char const *state = local->anchored ? "STATE: ANCHORED" : local->holding ? "STATE: HOLDING" : "STATE: FREE";
-			std::array< char const *, 3 > labels = {"JET ENERGY", hint, state};
+			std::array< char const *, 2 > labels = {"JET ENERGY", hint};
 			for (size_t row = 0; row < labels.size(); ++row) {
 				TextTexture const &label = cached_text(labels[row]);
 				if (label.height == 0) continue;
 				float text_scale = 12.0f * ui_scale / float(label.height); // Jet status text height.
 				glm::vec2 position = glm::vec2(220.0f, 86.0f + float(row) * 25.0f) * ui_scale; // 220 = text left margin; 86 = top margin; 25 = row spacing.
-				glm::vec3 color = row == 2 ? glm::vec3(0.94f, 0.89f, 0.76f) : cyan;
-				text_renderer.draw_text(label, position, text_scale, color, drawable_size);
+				text_renderer.draw_text(label, position, text_scale, cyan, drawable_size);
+			}
+		}
+
+		if (local && result == 0) {
+			float center_x = float(drawable_size.x) - 140.0f * ui_scale; // Panel center: distance from right edge.
+			glm::mat4 pixel_to_clip = glm::ortho(0.0f, float(drawable_size.x), float(drawable_size.y), 0.0f);
+			Object hands;
+			hands.sprite = SpriteId(sl.sprites.size() - 6);
+			hands.position = glm::vec2(center_x, 245.0f * ui_scale); // Panel vertical center.
+			hands.width = 125.0f * ui_scale; // Includes both corner brackets and the hand icon.
+			hands.scale.y = -1.0f;
+			draw_sprite(hands, pixel_to_clip, false);
+
+			bool holding = local->holding || local->anchored;
+			char const *state = local->anchored ? "ANCHORED" : holding ? "HOLDING" : "EMPTY";
+			std::array< char const *, 4 > labels = {
+				"HANDS", state, holding ? "RELEASE [F] TO THROW" : "[F] HOLD TO GRAB", holding ? "" : "RELEASE TO THROW"
+			};
+			std::array< float, 4 > tops = {196.0f, 246.0f, 264.0f, 283.0f}; // Title, state, and instruction top positions.
+			for (size_t row = 0; row < labels.size(); ++row) {
+				TextTexture const &label = cached_text(labels[row]);
+				if (label.height == 0) continue;
+				float text_scale = (row < 2 ? 12.0f : 10.0f) * ui_scale / float(label.height);
+				text_scale = std::min(text_scale, (hands.width - 16.0f * ui_scale) / float(label.width)); // Keep text inside the corner brackets.
+				glm::vec2 position(center_x - 0.5f * float(label.width) * text_scale, tops[row] * ui_scale);
+				text_renderer.draw_text(label, position, text_scale, glm::vec3(0.65f, 0.94f, 0.96f), drawable_size);
 			}
 		}
 
