@@ -23,6 +23,8 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Ou
 			Sprite sprite = sl.load_sprite(name);
 			sl.add_sprite(sprite);
 		}
+		Sprite helmet = sl.load_sprite("hud_helmet.png");
+		sl.add_sprite(helmet);
 		//HUD states are appended in order: zero to three jets.
 		for (auto name : {"hud_jet_0.png", "hud_jet_1.png", "hud_jet_2.png", "hud_jet_3.png"}) {
 			Sprite sprite = sl.load_sprite(name);
@@ -31,8 +33,12 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Ou
 		sl.upload_sprites();
 
 		//Smooth HUD images; world sprites stay pixel sharp.
-		for (size_t i = sl.sprites.size() - 4; i < sl.sprites.size(); ++i) {
+		for (size_t i = sl.sprites.size() - 5; i < sl.sprites.size(); ++i) {
 			glBindTexture(GL_TEXTURE_2D, sl.sprites[i].tex);
+			//HUD PNG colors are sRGB; decode before framebuffer encoding.
+			Sprite const &sprite = sl.sprites[i];
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, sprite.size.x, sprite.size.y,
+				0, GL_RGBA, GL_UNSIGNED_BYTE, sprite.data.data());
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		}
@@ -114,7 +120,7 @@ PlayMode::PlayMode(std::string const &host, std::string const &port) : PlayMode(
 }
 
 PlayMode::~PlayMode() {
-	for (size_t i = sl.sprites.size() - 4; i < sl.sprites.size(); ++i) {
+	for (size_t i = sl.sprites.size() - 5; i < sl.sprites.size(); ++i) {
 		glDeleteTextures(1, &sl.sprites[i].tex);
 	}
 	for (auto &entry : text_cache) {
@@ -433,6 +439,17 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 		}
 
+		{ //Fixed helmet overlay, below the HUD text.
+			glm::mat4 pixel_to_clip = glm::ortho(0.0f, float(drawable_size.x), float(drawable_size.y), 0.0f);
+			Sprite const &image = sl.sprites[sl.sprites.size() - 5];
+			Object helmet;
+			helmet.sprite = SpriteId(sl.sprites.size() - 5);
+			helmet.position = glm::vec2(drawable_size) * 0.5f;
+			helmet.width = float(drawable_size.x);
+			helmet.scale.y = -float(drawable_size.y) * float(image.size.x) / (helmet.width * float(image.size.y));
+			draw_sprite(helmet, pixel_to_clip, false);
+		}
+
 		//Use server-assigned labels: each client receives its own player first.
 		for (auto const &player : game.players) {
 			bool is_local = local && player.id == local->id;
@@ -501,10 +518,10 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			std::snprintf(time_text, sizeof(time_text), "%02d:%02d", seconds / 60, seconds % 60);
 			TextTexture const &timer = cached_text(time_text);
 			if (timer.height > 0) {
-				float text_scale = 32.0f * ui_scale / float(timer.height);
+				float text_scale = 32.0f * ui_scale / float(timer.height); // Timer text height in pixels at 1280x720.
 				glm::vec2 position(
 					0.5f * (float(drawable_size.x) - float(timer.width) * text_scale),
-					20.0f * ui_scale
+					20.0f * ui_scale // Timer top margin; increase to move down.
 				);
 				text_renderer.draw_text(timer, position, text_scale, glm::vec3(1.0f), drawable_size);
 			}
@@ -512,10 +529,10 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 		if (local && playing && local->boarding > 0.0f) {
 			float progress = local->boarding / Game::BoardingTime;
-			float bar_width = 180.0f * ui_scale;
-			float bar_height = 8.0f * ui_scale;
+			float bar_width = 180.0f * ui_scale; // Boarding bar width.
+			float bar_height = 8.0f * ui_scale; // Boarding bar thickness.
 			float bar_left = 0.5f * (float(drawable_size.x) - bar_width);
-			float bar_top = 90.0f * ui_scale;
+			float bar_top = 90.0f * ui_scale; // Boarding bar top margin.
 
 			//Scissor rectangles use a bottom-left origin, unlike text positions.
 			glEnable(GL_SCISSOR_TEST);
@@ -535,20 +552,31 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			TextTexture const &label = cached_text(local && playing && local->boarding > 0.0f ? "BOARDING" : status);
 			if (label.height > 0) {
 				float text_scale = 12.0f * ui_scale / float(label.height);
-				glm::vec2 position(0.5f * (float(drawable_size.x) - float(label.width) * text_scale), 66.0f * ui_scale);
+				glm::vec2 position(0.5f * (float(drawable_size.x) - float(label.width) * text_scale), 66.0f * ui_scale); // 66 = status text top margin.
 				text_renderer.draw_text(label, position, text_scale, glm::vec3(0.75f), drawable_size);
 			}
-			TextTexture const &help = cached_text("MOUSE - AIM   SPACE - JET   HOLD E - GRAB   Q - THROW   HOLD F - ESCAPE   R - RESTART");
-			if (help.height > 0) {
-				float text_scale = 12.0f * ui_scale / float(help.height);
-				glm::vec2 position(0.5f * (float(drawable_size.x) - float(help.width) * text_scale), float(drawable_size.y) - 22.0f * ui_scale);
-				text_renderer.draw_text(help, position, text_scale, glm::vec3(0.75f), drawable_size);
+			//Planned keyboard controls; input implementation is handled separately.
+			std::array< char const *, 5 > controls_help = {
+				"[A] ROTATE CCW", "[D] ROTATE CW", "[F] GRAB / THROW", "[SPACE] JET", "[R] RESTART"
+			};
+			float help_width = 800.0f * ui_scale; // Controls horizontal spacing; increase to spread labels apart.
+			for (size_t i = 0; i < controls_help.size(); ++i) {
+				TextTexture const &help = cached_text(controls_help[i]);
+				if (help.height == 0) continue;
+				float text_scale = 11.0f * ui_scale / float(help.height); // Controls text height.
+				float t = (float(i) - 2.0f) / 2.0f;
+				glm::vec2 position(
+					0.5f * float(drawable_size.x) + t * help_width * 0.4f - 0.5f * float(help.width) * text_scale,
+					float(drawable_size.y) - (45.0f + 35.0f * t * t) * ui_scale // 45 = bottom margin; 35 = extra rise at the ends. Increase either to move up.
+				);
+				text_renderer.draw_text(help, position, text_scale, glm::vec3(0.65f, 0.94f, 0.96f), drawable_size);
 			}
+
 		}
 
 		if (local && result == 0) {
 			//Screen-space jet HUD.
-			glm::vec2 center = glm::vec2(68.0f, 60.0f) * ui_scale;
+			glm::vec2 center = glm::vec2(160.0f, 120.0f) * ui_scale; // Jet image center: X from left, Y from top. Increase to move right/down.
 			glm::mat4 pixel_to_clip = glm::ortho(0.0f, float(drawable_size.x), float(drawable_size.y), 0.0f);
 			glm::vec3 cyan(0.65f, 0.94f, 0.96f);
 			//Select the complete HUD image using the synchronized jet count.
@@ -556,7 +584,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			Object portrait;
 			portrait.sprite = SpriteId(sl.sprites.size() - 4 + jets);
 			portrait.position = center;
-			portrait.width = 150.0f * ui_scale;
+			portrait.width = 150.0f * ui_scale; // Full PNG width, including transparent padding; increase to enlarge.
 			portrait.scale.y = -1.0f; //Screen coordinates point down; PNG textures point up.
 			draw_sprite(portrait, pixel_to_clip, false);
 
@@ -569,8 +597,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			for (size_t row = 0; row < labels.size(); ++row) {
 				TextTexture const &label = cached_text(labels[row]);
 				if (label.height == 0) continue;
-				float text_scale = 12.0f * ui_scale / float(label.height);
-				glm::vec2 position = glm::vec2(128.0f, 26.0f + float(row) * 25.0f) * ui_scale;
+				float text_scale = 12.0f * ui_scale / float(label.height); // Jet status text height.
+				glm::vec2 position = glm::vec2(220.0f, 86.0f + float(row) * 25.0f) * ui_scale; // 220 = text left margin; 86 = top margin; 25 = row spacing.
 				glm::vec3 color = row == 2 ? glm::vec3(0.94f, 0.89f, 0.76f) : cyan;
 				text_renderer.draw_text(label, position, text_scale, color, drawable_size);
 			}
