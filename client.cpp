@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
 
 	//create window:
 	Mode::window = SDL_CreateWindow(
-		"gp25 game6: multiplayer", //TODO: remember to set a title for your game!
+		"Newton³", //TODO: remember to set a title for your game!
 		1280, 720, //TODO: modify window size if you'd like
 		SDL_WINDOW_OPENGL
 		| SDL_WINDOW_HIGH_PIXEL_DENSITY //uncomment for full resolution on high-DPI screens
@@ -124,7 +124,7 @@ int main(int argc, char **argv) {
 	//------------ 15666 f26 Intro Mode + create game mode + make current ------------
 	Mode::set_current(
 		std::make_shared< GP26IntroMode >( [host, port](){	
-			Mode::set_current(std::make_shared< PlayMode >(Game::Level::Arena));
+			Mode::set_current(std::make_shared< MenuMode >());
 		}));
 
 	//Tell the launcher that connection, assets and the game window are ready.

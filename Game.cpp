@@ -93,7 +93,13 @@ Game::Game(Level level_) : level(level_) {
 	switch (level)
 	{
 	case Game::Level::Menu:
-		
+		add_prop(SpriteId::Cart, glm::vec2(-1.05f, 0.0f), 1.3f, 1.5f, glm::vec2(0.0f));
+		for (float y : {0.48f, -0.48f}) {
+			add_prop(SpriteId::Chamber, glm::vec2(1.25f, y), EscapeHeight / 0.12f, 1.0f, glm::vec2(0.0f));
+			Object &chamber = objects.back();
+			chamber.pp.type = PhysicsEngine::MovementType::Static;
+			chamber.pp.collider = PhysicsEngine::CircleCollider{0.5f * EscapeHeight};
+		}
 		break;
 	
 	case Game::Level::Solo:
@@ -138,7 +144,7 @@ Player *Game::spawn_player() {
 		switch (level)
 		{
 		case Game::Level::Menu:
-			
+			player.position = glm::vec2(-1.25f, 0.0f);
 			break;
 		
 		case Game::Level::Solo:
@@ -177,14 +183,11 @@ bool Game::in_boarding_area(glm::vec2 const &position) {
 void Game::start_round() {
 	switch (level)
 	{
-	case Game::Level::Menu:
-		/* code */
-		break;
-	
 	case Game::Level::Solo:
 		
 		break;
 
+	case Game::Level::Menu:
 	case Game::Level::Arena:
 		//Keep player addresses stable: server connections point into this list.
 		for (auto &player : players) PhysicsEngine::release({&player.position, &player.pp});
@@ -194,7 +197,8 @@ void Game::start_round() {
 			uint32_t id = player.id;
 			player = Player();
 			player.id = id;
-			player.position = glm::vec2(1.3f, slot++ == 0 ? 0.75f : -0.75f);
+			player.position = level == Level::Menu ? glm::vec2(-1.25f, 0.0f)
+				: glm::vec2(1.3f, slot++ == 0 ? 0.75f : -0.75f);
 			player.pp.collider = PhysicsEngine::CircleCollider{PlayerRadius};
 			player.pp.grip = GripImpulse;
 			player.jets_left = JetCount;
@@ -220,7 +224,7 @@ void Game::on_grab_range_exit(Player &player, Object &object) {
 
 void Game::update(float elapsed) {
 	{	// restart
-		bool can_restart = level == Game::Level::Solo || players.size() == 2;
+		bool can_restart = level != Game::Level::Arena || players.size() == 2;
 		for (auto const &player : players)
 		{
 			if (player.controls.restart.downs > 0 && can_restart)
@@ -233,20 +237,17 @@ void Game::update(float elapsed) {
 	
 	switch (level)
 	{
-	case Game::Level::Menu:
-		/* code */
-		break;
-	
 	case Game::Level::Solo:
 		/* code */
 		break;
 
+	case Game::Level::Menu:
 	case Game::Level::Arena:
 		if (match_state != MatchState::Playing) {
 			for (auto &player : players) player.controls = Player::Controls();
 			return;
 		}
-		float round_step = std::min(elapsed, time_left);
+		float round_step = level == Level::Menu ? elapsed : std::min(elapsed, time_left);
 
 		//player actions this tick (step applies them once, then clears the lists):
 		std::vector< PhysicsEngine::Grab > grabs;
@@ -334,6 +335,7 @@ void Game::update(float elapsed) {
 		for (auto &player : players) {
 			player.holding = player.pp.partner.pp != nullptr;
 			player.anchored = player.holding && player.pp.partner.pp->type == PhysicsEngine::MovementType::Static;
+			if (level == Level::Menu) continue; //Practice has no boarding or winner.
 			bool eligible = in_boarding_area(player.position)
 				&& glm::dot(player.pp.velocity, player.pp.velocity) <= BoardingSpeed * BoardingSpeed;
 			if (eligible) {
@@ -348,6 +350,7 @@ void Game::update(float elapsed) {
 				}
 			} else player.boarding = 0.0f;
 		}
+		if (level == Level::Menu) break; //Practice has no countdown.
 		time_left = std::max(0.0f, time_left - round_step);
 		if (winner != 0) {
 			match_state = tied ? MatchState::Draw : MatchState::Escaped;
