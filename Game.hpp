@@ -60,6 +60,7 @@ struct Player {
 
 	//player state (sent from server):
 	glm::vec2 position = glm::vec2(0.0f, 0.0f);
+	float rotation = 0.0f;	// radians, around the z-axis (out of the screen)
 
 	//sprite used to draw this player:
 	SpriteId sprite = SpriteId::Hands;
@@ -86,11 +87,18 @@ struct Object {
 
 	//transform:
 	glm::vec2 position = glm::vec2(0.0f, 0.0f);
+	float rotation = 0.0f;	// radians
 	glm::vec2 scale = glm::vec2(1.0f, 1.0f);
 	float width = 0.12f;	// world-space width
 
 	// physics
 	PhysicsEngine::PhysicsProp pp;
+};
+
+struct Camera
+{
+	glm::vec2 position = glm::vec2(0.0f);	// world-space point at the center of the view
+	float rotation = 0.0f;
 };
 
 struct Game {
@@ -135,6 +143,9 @@ struct Game {
 	};
 	Game(Level level = Level::Arena);
 	Level level;
+
+	// 2d-camera
+	Camera camera;
 
 	//constants:
 	//the update rate on the server:
