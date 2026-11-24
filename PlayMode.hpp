@@ -64,8 +64,9 @@ const float UIBoardingHeight = 8.0f;
 // Bottom controls: increase Bottom/Rise to move up; Width spreads labels apart.
 const float UIControlsWidth = 800.0f;
 const float UIControlsBottom = 45.0f;
-const float UIControlsRise = 35.0f;
+const float UIControlsRise = 55.0f;
 const float UIControlsHeight = 11.0f;
+const float UIControlsGap = 12.0f; // Minimum horizontal space between control labels.
 
 // Menu heading and pod labels; pod offsets are relative to each pod on screen.
 const float UIMenuTitleTop = 14.0f;

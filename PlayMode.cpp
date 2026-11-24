@@ -703,8 +703,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			float help_width = UIControlsWidth * ui_scale; // Controls horizontal spacing; increase to spread labels apart.
 			for (size_t i = 0; i < controls_help.size(); ++i) {
 				TextTexture const &help = cached_text(controls_help[i]);
-				if (help.height == 0) continue;
-				float text_scale = UIControlsHeight * ui_scale / float(help.height); // Controls text height.
+				if (help.height == 0 || help.width == 0) continue;
+				float text_scale = std::min(UIControlsHeight * ui_scale / float(help.height), (help_width * 0.2f - UIControlsGap * ui_scale) / float(help.width)); // Controls text height.
 				float t = (float(i) - 2.0f) / 2.0f;
 				glm::vec2 position(
 					0.5f * float(drawable_size.x) + t * help_width * 0.4f - 0.5f * float(help.width) * text_scale,
