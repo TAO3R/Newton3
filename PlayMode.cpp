@@ -126,6 +126,7 @@ PlayMode::PlayMode(std::string const &host, std::string const &port) : PlayMode(
 }
 
 PlayMode::~PlayMode() {
+	if (client) client->connection.close();
 	for (size_t i = sl.sprites.size() - 6; i < sl.sprites.size(); ++i) {
 		glDeleteTextures(1, &sl.sprites[i].tex);
 	}
@@ -219,6 +220,7 @@ void PlayMode::update(float elapsed) {
 	
 	if (client)	// process at server
 	{
+		if (!client->connection) { game.match_state = Game::MatchState::Disconnected; return; }
 		//queue data for sending to server:
 		controls.send_controls_message(&client->connection);
 
@@ -236,7 +238,7 @@ void PlayMode::update(float elapsed) {
 				std::cout << "[" << c->socket << "] opened" << std::endl;
 			} else if (event == Connection::OnClose) {
 				std::cout << "[" << c->socket << "] closed (!)" << std::endl;
-				throw std::runtime_error("Lost connection to server!");
+				game.match_state = Game::MatchState::Disconnected;
 			} else { assert(event == Connection::OnRecv);
 				//std::cout << "[" << c->socket << "] recv'd data. Current buffer:\n" << hex_dump(c->recv_buffer); std::cout.flush(); //DEBUG
 				bool handled_message;
@@ -633,7 +635,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 		if (game.level == Game::Level::Arena) { //status and control reminders, outside the arena:
 			std::string status = game.match_state == Game::MatchState::Waiting
-				? "WAITING FOR SECOND PLAYER" : "REACH THE ESCAPE POD";
+				? "WAITING FOR SECOND PLAYER" + (room_address.empty() ? std::string() : " | " + room_address) : "REACH THE ESCAPE POD";
 			TextTexture const &label = cached_text(local && playing && local->boarding > 0.0f ? "BOARDING" : status);
 			if (label.height > 0) {
 				float text_scale = 12.0f * ui_scale / float(label.height);

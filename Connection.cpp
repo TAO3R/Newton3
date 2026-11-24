@@ -348,9 +348,29 @@ Client::Client(std::string const &host, std::string const &port) : connections(1
 				std::cout << "(failed to create socket: " << strerror(errno) << ")" << std::endl;
 				continue;
 			}
+			#ifdef _WIN32
+			//Bound the existing connection attempt; menu input may pause for up to two seconds per address.
+			u_long nonblocking = 1;
+			if (ioctlsocket(s, FIONBIO, &nonblocking) != 0) { closesocket(s); continue; }
 			int ret = connect(s, info->ai_addr, int(info->ai_addrlen));
+			if (ret != 0 && WSAGetLastError() == WSAEWOULDBLOCK) {
+				fd_set writable, failed;
+				FD_ZERO(&writable); FD_ZERO(&failed);
+				FD_SET(s, &writable); FD_SET(s, &failed);
+				timeval timeout = {2, 0};
+				int ready = select(0, nullptr, &writable, &failed, &timeout);
+				int error = 0, size = sizeof(error);
+				ret = ready > 0 && getsockopt(s, SOL_SOCKET, SO_ERROR, reinterpret_cast< char * >(&error), &size) == 0
+					&& error == 0 && FD_ISSET(s, &writable) ? 0 : -1;
+			}
+			nonblocking = 0;
+			ioctlsocket(s, FIONBIO, &nonblocking);
+			#else
+			int ret = connect(s, info->ai_addr, int(info->ai_addrlen));
+			#endif
 			if (ret < 0) {
 				std::cout << "(failed to connect: " << strerror(errno) << ")" << std::endl;
+				closesocket(s);
 				continue;
 			}
 			std::cout << "success!" << std::endl;
