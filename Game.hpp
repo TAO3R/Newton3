@@ -71,6 +71,7 @@ struct Player {
 	bool anchored = false;
 	uint8_t jets_left = 0; //set on spawn
 	float jet_recharge = 0.0f; //server only: seconds charged toward the next jet
+	float held_rotation = 0.0f; //server only: held object's rotation relative to the player's, fixed at the grab
 	bool can_grab = false; //something is in grab range right now (drives the grab prompt)
 
 	//server only: objects in grab range, kept by Game::on_grab_range_enter / on_grab_range_exit
@@ -170,6 +171,7 @@ struct Game {
 	inline static constexpr float ThrowImpulse = 0.3f; //held object gets +J toward the aim, the thrower -J
 	inline static constexpr float GripImpulse = 1.2f;  //a hit harder than this knocks a player off what it anchors to
 	inline static constexpr float PlayerRotSpeed = 1.0f;	// how fast player can rotate (radians / second)
+	inline static constexpr float PlayerSpriteFacing = 0.5f * float(M_PI);	// direction the player sprite faces at rotation 0
 
 	//grab range bookkeeping, called by update when an object comes into / leaves a player's reach:
 	void on_grab_range_enter(Player &player, Object &object);
