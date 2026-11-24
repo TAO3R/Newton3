@@ -21,7 +21,12 @@
 PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Outfit-Regular.ttf")) {
 	
 	{ 	//upload sprite textures (order must match SpriteId):
-		for (auto name : {"default.png", "hands.png", "cart.png", "pc.png", "probe.png", "turbine.png", "cryosleep_chamber.png"}) {
+		for (auto name : {"default.png", "hands.png", "cart.png", "pc.png", "probe.png", "turbine.png", "cryosleep_chamber.png", "wall_fill.png"}) {
+			Sprite sprite = sl.load_sprite(name);
+			sl.add_sprite(sprite);
+		}
+		//Client-only wall textures, after world sprites and before the existing HUD.
+		for (auto name : {"wall_01.png", "wall_05.png", "wall_06.png"}) {
 			Sprite sprite = sl.load_sprite(name);
 			sl.add_sprite(sprite);
 		}
@@ -131,7 +136,7 @@ PlayMode::PlayMode(std::string const &host, std::string const &port) : PlayMode(
 
 PlayMode::~PlayMode() {
 	if (client) client->connection.close();
-	for (size_t i = sl.sprites.size() - 7; i < sl.sprites.size(); ++i) {
+	for (size_t i = size_t(SpriteId::Count); i < sl.sprites.size(); ++i) {
 		glDeleteTextures(1, &sl.sprites[i].tex);
 	}
 	for (auto &entry : text_cache) {
@@ -219,6 +224,7 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 }
 
 void PlayMode::update(float elapsed) {
+	bool first_state = game.players.empty();
 
 	if (client)	// process at server
 	{
@@ -298,6 +304,7 @@ void PlayMode::update(float elapsed) {
 		else
 		{
 			Player const &local = game.players.front();
+			if (first_state) { game.camera.position = local.position; game.camera.rotation = local.rotation; }
 			glm::vec2 dir = glm::vec2(local.position - game.camera.position);	// camera to local player dir
 			// float magnitude = std::sqrt(dir.x * dir.x + dir.y * dir.y);
 			// dir = glm::vec2(dir.x / magnitude, dir.y / magnitude);
@@ -390,8 +397,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		float arena_height = float(drawable_size.y) - header_height - footer_height;
 		float aspect = float(drawable_size.x) / float(drawable_size.y);
 		float scale = std::min(
-			2.0f * aspect / (Game::ArenaMax.x - Game::ArenaMin.x + 2.0f * Game::PlayerRadius),
-			2.0f * arena_height / float(drawable_size.y) / (Game::ArenaMax.y - Game::ArenaMin.y + 2.0f * Game::PlayerRadius)
+			2.0f * aspect / (WorldViewWidth + 2.0f * Game::PlayerRadius),
+			2.0f * arena_height / float(drawable_size.y) / (WorldViewHeight + 2.0f * Game::PlayerRadius)
 		);
 		// glm::vec2 offset = -0.5f * (Game::ArenaMax + Game::ArenaMin);
 		
@@ -453,9 +460,42 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			glDisable(GL_BLEND);
 		};
 
+		//Tile visible walls outside the existing physics bounds; no extra colliders.
+		auto draw_wall = [&](glm::vec2 edge, float rotation, float length) {
+			int tiles = int(std::ceil(length / 0.4f));
+			float step = length / float(tiles);
+			float c = std::cos(rotation), sn = std::sin(rotation);
+			for (int i = 0; i < tiles; ++i) {
+				Object wall;
+				wall.sprite = SpriteId(size_t(SpriteId::Count) + (i % 8 == 3 ? 1 : i % 8 == 6 ? 2 : 0));
+				wall.width = 0.2f;
+				wall.scale.y = step / (wall.width * 2.0f);
+				//The PNG wall's inner face is at x = 30.5 of 32 pixels.
+				glm::vec2 offset(-wall.width * (30.5f / 32.0f - 0.5f), -length * 0.5f + (float(i) + 0.5f) * step);
+				wall.position = edge + glm::vec2(c * offset.x - sn * offset.y, sn * offset.x + c * offset.y);
+				wall.rotation = rotation;
+				draw_sprite(wall, world_to_clip);
+			}
+		};
+		glm::vec2 minimum = game.level == Game::Level::Menu ? Game::MenuMin : Game::ArenaMin;
+		glm::vec2 maximum = game.level == Game::Level::Menu ? Game::MenuMax : Game::ArenaMax;
+		glm::vec2 middle = (minimum + maximum) * 0.5f;
+		glm::vec2 extent = maximum - minimum;
+		draw_wall(glm::vec2(minimum.x, middle.y), 0.0f, extent.y);
+		draw_wall(glm::vec2(maximum.x, middle.y), float(M_PI), extent.y);
+		draw_wall(glm::vec2(middle.x, maximum.y), -0.5f * float(M_PI), extent.x);
+		draw_wall(glm::vec2(middle.x, minimum.y), 0.5f * float(M_PI), extent.x);
+
 		//props and chamber come from the server:
 		for (auto const &object : game.objects) {
 			draw_sprite(object, world_to_clip);
+			if (object.sprite == SpriteId::Wall) {
+				glm::vec2 half = PhysicsEngine::half_extent(object.pp.collider);
+				draw_wall(object.position + glm::vec2(0.0f, half.y), 0.5f * float(M_PI), half.x * 2.0f);
+				draw_wall(object.position - glm::vec2(0.0f, half.y), -0.5f * float(M_PI), half.x * 2.0f);
+				draw_wall(object.position + glm::vec2(half.x, 0.0f), 0.0f, half.y * 2.0f);
+				draw_wall(object.position - glm::vec2(half.x, 0.0f), float(M_PI), half.y * 2.0f);
+			}
 		}
 
 		//players on top, one player diameter wide:
@@ -509,12 +549,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				}
 			}
 
-			if (game.level != Game::Level::Menu) {
-				lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
-				lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
-				lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
-				lines.draw(glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
-			}
+
 
 
 		}
