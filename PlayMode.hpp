@@ -63,13 +63,13 @@ struct PlayMode : Mode {
 struct MenuMode : PlayMode
 {
 	MenuMode() : PlayMode(Game::Level::Menu) {}
-	virtual void update(float elapsed) override
-	{
-		PlayMode::update(elapsed);
-
-		{	// Mode Change
-
-		}
-	}
+	enum class Screen { Play, Solo, Multiplayer, Host, Join };
+	Screen screen = Screen::Play;
+	float selection_time = 0.0f;
+	int selection_pod = -1;
+	int selected = 0;
+	std::string panel_message;
+	virtual bool handle_event(SDL_Event const &, glm::uvec2 const &window_size) override;
+	virtual void update(float elapsed) override;
 	virtual void draw(glm::uvec2 const &drawable_size) override;
 };

@@ -23,6 +23,8 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Ou
 			Sprite sprite = sl.load_sprite(name);
 			sl.add_sprite(sprite);
 		}
+		Sprite hands = sl.load_sprite("hud_hands.png");
+		sl.add_sprite(hands);
 		Sprite helmet = sl.load_sprite("hud_helmet.png");
 		sl.add_sprite(helmet);
 		//HUD states are appended in order: zero to three jets.
@@ -33,7 +35,7 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Ou
 		sl.upload_sprites();
 
 		//Smooth HUD images; world sprites stay pixel sharp.
-		for (size_t i = sl.sprites.size() - 5; i < sl.sprites.size(); ++i) {
+		for (size_t i = sl.sprites.size() - 6; i < sl.sprites.size(); ++i) {
 			glBindTexture(GL_TEXTURE_2D, sl.sprites[i].tex);
 			//HUD PNG colors are sRGB; decode before framebuffer encoding.
 			Sprite const &sprite = sl.sprites[i];
@@ -120,7 +122,7 @@ PlayMode::PlayMode(std::string const &host, std::string const &port) : PlayMode(
 }
 
 PlayMode::~PlayMode() {
-	for (size_t i = sl.sprites.size() - 5; i < sl.sprites.size(); ++i) {
+	for (size_t i = sl.sprites.size() - 6; i < sl.sprites.size(); ++i) {
 		glDeleteTextures(1, &sl.sprites[i].tex);
 	}
 	for (auto &entry : text_cache) {
@@ -282,6 +284,7 @@ void PlayMode::update(float elapsed) {
 			game.update(Game::Tick);
 			tick_acc -= Game::Tick;
 		}
+		set_grab_prompt(local.position, local.can_grab);
 	}
 
 	{	// camear update, which is only based on local player position
@@ -310,16 +313,12 @@ void PlayMode::update(float elapsed) {
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	switch (game.level)
 	{
-	case Game::Level::Menu:
-		/* code */
-
-		break;
-	
 	case Game::Level::Solo:
 		/* code */
 
 		break;
 
+	case Game::Level::Menu:
 	case Game::Level::Arena:
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -469,7 +468,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				}
 			}
 
-			{ //boarding area outline for checking placement:
+			if (game.level == Game::Level::Arena) { //boarding area outline for checking placement:
 				glm::vec2 min = Game::EscapeAreaMin;
 				glm::vec2 max = Game::EscapeAreaMax;
 				glm::u8vec4 color(0x60, 0xc8, 0xdf, 0xff);
@@ -492,10 +491,12 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				}
 			}
 
-			lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
-			lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
-			lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
-			lines.draw(glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
+			if (game.level == Game::Level::Arena) {
+				lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
+				lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
+				lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
+				lines.draw(glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
+			}
 
 
 		}
@@ -513,6 +514,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 		//Use server-assigned labels: each client receives its own player first.
 		for (auto const &player : game.players) {
+			if (game.level == Game::Level::Menu) break;
 			bool is_local = local && player.id == local->id;
 			TextTexture const &label = cached_text(is_local ? "YOU" : "");
 			if (label.height == 0) continue;
@@ -530,8 +532,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		}
 
 		std::string action;
-		if (local && playing) {
-			if (Game::in_boarding_area(local->position)) {
+		if (game.level == Game::Level::Arena && local && playing) {
+			if (game.level == Game::Level::Arena && Game::in_boarding_area(local->position)) {
 				bool slow = glm::dot(local->pp.velocity, local->pp.velocity) <= Game::BoardingSpeed * Game::BoardingSpeed;
 				action = slow ? "HOLD F - ESCAPE" : "SLOW DOWN TO BOARD";
 			} else if (local->anchored) action = "ANCHORED | RELEASE E / Q - PUSH OFF";
@@ -558,7 +560,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			}
 		}
 
-		{ //anchor the label above the chamber in world space:
+		if (game.level == Game::Level::Arena) { //anchor the label above the chamber in world space:
 			TextTexture const &label = text_cache.at("ESCAPE POD");
 			if (label.height > 0) {
 				glm::vec2 anchor = Game::EscapePosition + glm::vec2(0.0f, Game::EscapeHeight * 0.5f + 0.04f);
@@ -573,7 +575,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			}
 		}
 
-		{ //draw the server-controlled timer above the scene:
+		if (game.level == Game::Level::Arena) { //draw the server-controlled timer above the scene:
 			int seconds = int(std::ceil(game.time_left));
 			char time_text[16];
 			std::snprintf(time_text, sizeof(time_text), "%02d:%02d", seconds / 60, seconds % 60);
@@ -607,7 +609,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			glDisable(GL_SCISSOR_TEST);
 		}
 
-		{ //status and control reminders, outside the arena:
+		if (game.level == Game::Level::Arena) { //status and control reminders, outside the arena:
 			std::string status = game.match_state == Game::MatchState::Waiting
 				? "WAITING FOR SECOND PLAYER" : "REACH THE ESCAPE POD";
 			TextTexture const &label = cached_text(local && playing && local->boarding > 0.0f ? "BOARDING" : status);
@@ -653,15 +655,51 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			if (!playing) hint = "WAITING";
 			else if (local->jets_left == 0) hint = "RECHARGING";
 			else if (local->anchored) hint = "ANCHORED";
-			char const *state = local->anchored ? "STATE: ANCHORED" : local->holding ? "STATE: HOLDING" : "STATE: FREE";
-			std::array< char const *, 3 > labels = {"JET ENERGY", hint, state};
+			std::array< char const *, 2 > labels = {"JET ENERGY", hint};
 			for (size_t row = 0; row < labels.size(); ++row) {
 				TextTexture const &label = cached_text(labels[row]);
 				if (label.height == 0) continue;
 				float text_scale = 12.0f * ui_scale / float(label.height); // Jet status text height.
 				glm::vec2 position = glm::vec2(220.0f, 86.0f + float(row) * 25.0f) * ui_scale; // 220 = text left margin; 86 = top margin; 25 = row spacing.
-				glm::vec3 color = row == 2 ? glm::vec3(0.94f, 0.89f, 0.76f) : cyan;
-				text_renderer.draw_text(label, position, text_scale, color, drawable_size);
+				text_renderer.draw_text(label, position, text_scale, cyan, drawable_size);
+			}
+		}
+
+		if (local && result == 0) {
+			float center_x = float(drawable_size.x) - 140.0f * ui_scale; // Panel center: distance from right edge.
+			glm::mat4 pixel_to_clip = glm::ortho(0.0f, float(drawable_size.x), float(drawable_size.y), 0.0f);
+			Object hands;
+			hands.sprite = SpriteId(sl.sprites.size() - 6);
+			hands.position = glm::vec2(center_x, 245.0f * ui_scale); // Panel vertical center.
+			hands.width = 125.0f * ui_scale; // Includes both corner brackets and the hand icon.
+			hands.scale.y = -1.0f;
+			draw_sprite(hands, pixel_to_clip, false);
+
+			bool holding = local->holding || local->anchored;
+			char const *state = local->anchored ? "ANCHORED" : holding ? "HOLDING" : "EMPTY";
+			std::array< char const *, 2 > labels = {"HANDS", state};
+			std::array< float, 2 > tops = {196.0f, 246.0f}; // Title and state top positions.
+			for (size_t row = 0; row < labels.size(); ++row) {
+				TextTexture const &label = cached_text(labels[row]);
+				if (label.height == 0) continue;
+				float text_scale = 12.0f * ui_scale / float(label.height);
+				text_scale = std::min(text_scale, (hands.width - 16.0f * ui_scale) / float(label.width)); // Keep text inside the corner brackets.
+				glm::vec2 position(center_x - 0.5f * float(label.width) * text_scale, tops[row] * ui_scale);
+				text_renderer.draw_text(label, position, text_scale, glm::vec3(0.65f, 0.94f, 0.96f), drawable_size);
+			}
+			if (game.level == Game::Level::Arena) {
+				std::array< char const *, 2 > hints = {
+					holding ? "RELEASE [F] TO THROW" : "[F] HOLD TO GRAB", holding ? "" : "RELEASE TO THROW"
+				};
+				for (size_t row = 0; row < hints.size(); ++row) {
+					TextTexture const &label = cached_text(hints[row]);
+					if (label.height == 0 || label.width == 0) continue;
+					float text_scale = std::min(10.0f * ui_scale / float(label.height),
+						(hands.width - 16.0f * ui_scale) / float(label.width));
+					glm::vec2 position(center_x - 0.5f * float(label.width) * text_scale,
+						(264.0f + float(row) * 19.0f) * ui_scale);
+					text_renderer.draw_text(label, position, text_scale, glm::vec3(0.65f, 0.94f, 0.96f), drawable_size);
+				}
 			}
 		}
 
