@@ -4,6 +4,7 @@
 #include "Game.hpp"
 #include "SpriteLoader.hpp"
 #include "TextRenderer.hpp"
+#include "Sounds.hpp"
 
 #include <map>
 
@@ -34,8 +35,7 @@ struct PlayMode : Mode {
 	//input tracking for local player:
 	Player::Controls controls;
 
-	//mouse in clip space, turned into controls.aim (world space) with the last drawn view:
-	glm::vec2 mouse_clip = glm::vec2(0.0f);
+	//inverse of the last drawn view (MenuMode recovers world_to_clip from it for its labels):
 	glm::mat4 world_from_clip = glm::mat4(1.0f);
 
 	//latest game state (from server):
@@ -62,6 +62,12 @@ struct PlayMode : Mode {
 	std::string room_address;
 	std::unique_ptr< Client >  client;	// null = local play
 	float tick_acc = 0.0f;	// local fixed-step accumulator
+
+	// sounds
+	std::shared_ptr< Sound::PlayingSample > bgm;
+
+	int last_hits = 0; // previous number of hits for player body
+	Game::MatchState last_match_state = Game::MatchState::Waiting;
 };
 
 struct MenuMode : PlayMode

@@ -13,7 +13,7 @@ void Player::Controls::send_controls_message(Connection *connection_) const {
 	assert(connection_);
 	auto &connection = *connection_;
 
-	uint32_t size = 4 + sizeof(aim);
+	uint32_t size = 5;
 	connection.send(Message::C2S_Controls);
 	connection.send(uint8_t(size));
 	connection.send(uint8_t(size >> 8));
@@ -28,9 +28,9 @@ void Player::Controls::send_controls_message(Connection *connection_) const {
 
 	send_button(jet);
 	send_button(grab);
-	send_button(toss);
 	send_button(restart);
-	connection.send(aim);
+	send_button(turn_cc);
+	send_button(turn_c);
 }
 
 bool Player::Controls::recv_controls_message(Connection *connection_) {
@@ -45,7 +45,7 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 	uint32_t size = (uint32_t(recv_buffer[3]) << 16)
 	              | (uint32_t(recv_buffer[2]) << 8)
 	              |  uint32_t(recv_buffer[1]);
-	uint32_t expected = 4 + sizeof(aim);
+	uint32_t expected = 5;
 	if (size != expected) throw std::runtime_error("Controls message with size " + std::to_string(size) + " != " + std::to_string(expected) + "!");
 	
 	//expecting complete message:
@@ -63,9 +63,9 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 
 	recv_button(recv_buffer[4+0], &jet);
 	recv_button(recv_buffer[4+1], &grab);
-	recv_button(recv_buffer[4+2], &toss);
-	recv_button(recv_buffer[4+3], &restart);
-	std::memcpy(&aim, &recv_buffer[4+4], sizeof(aim));
+	recv_button(recv_buffer[4+2], &restart);
+	recv_button(recv_buffer[4+3], &turn_cc);
+	recv_button(recv_buffer[4+4], &turn_c);
 
 	//delete message from buffer:
 	recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + 4 + size);
@@ -253,19 +253,44 @@ void Game::update(float elapsed) {
 		std::vector< PhysicsEngine::Grab > grabs;
 		std::vector< PhysicsEngine::Throw > throws;
 
+		//the Object behind a player's held body (null when holding nothing):
+		auto held_object = [&](Player const &player) -> Object * {
+			for (auto &object : objects) {
+				if (&object.pp == player.pp.partner.pp) return &object;
+			}
+			return nullptr;
+		};
+
 		for (auto &player : players) {
 			PhysicsEngine::Body body{&player.position, &player.pp};
 
 			{	// rotation
-				if (player.controls.turn_cc.pressed) { player.rotation += PlayerRotSpeed * elapsed; }
-				else if (player.controls.turn_c.pressed) { player.rotation -= PlayerRotSpeed * elapsed; }
+				//A and D held together cancel out:
+				float turn = (float(player.controls.turn_cc.pressed) - float(player.controls.turn_c.pressed)) * PlayerRotSpeed * elapsed;
+				player.rotation += turn;
+
+				// a held pair turns as one rigid body around its center of mass
+				// (anchored: the anchor is the center and stays put, the player swings around it)
+				PhysicsEngine::Body const &held = player.pp.partner;
+				if (turn != 0.0f && held.pp) {
+					float c = std::cos(turn), s = std::sin(turn);
+					auto turned = [&](glm::vec2 v) { return glm::vec2(c * v.x - s * v.y, s * v.x + c * v.y); };
+					bool movable = held.pp->inv_mass() != 0.0f;
+					glm::vec2 center = movable
+						? (player.pp.mass * player.position + held.pp->mass * *held.position) / (player.pp.mass + held.pp->mass)
+						: *held.position;
+					player.position = center + turned(player.position - center);
+					if (movable) {
+						*held.position = center + turned(*held.position - center);
+						if (Object *object = held_object(player)) object->rotation = player.rotation + player.held_rotation;
+					}
+				}
 			}
 
-			//jet: one push toward the aim point per press, while jets last:
-			glm::vec2 to_aim = player.controls.aim - player.position;
+			//jet: one push forward per press, while jets last:
+			glm::vec2 forward = player.forward();
 			for (uint8_t i = 0; i < player.controls.jet.downs && player.jets_left > 0; ++i) {
-				if (to_aim == glm::vec2(0.0f)) break; //no direction, don't spend the jet
-				if (!PhysicsEngine::apply_impulse(body, glm::normalize(to_aim) * JetImpulse)) break; //anchored: can't move
+				if (!PhysicsEngine::apply_impulse(body, forward * JetImpulse)) break; //anchored: can't move
 				player.jets_left -= 1;
 			}
 
@@ -279,24 +304,16 @@ void Game::update(float elapsed) {
 			}
 			if (player.jets_left == JetCount) player.jet_recharge = 0.0f;
 
-			//throw what's held toward the aim point (the thrower recoils the other way):
-			bool tossed = false;
-			if (player.controls.toss.downs > 0 && player.pp.partner.pp && to_aim != glm::vec2(0.0f)) {
-				throws.push_back({body, glm::normalize(to_aim) * ThrowImpulse});
-				tossed = true;
-			}
-
-			//grab on press, let go once the key is up:
+			//grab on press; once the key is up, throw what's held forward (the thrower recoils the other way):
 			if (player.controls.grab.downs > 0) {
 				grabs.push_back({body, GrabRange});
-			} else if (!tossed && !player.controls.grab.pressed && player.pp.partner.pp) {
-				throws.push_back({body, glm::vec2(0.0f)});
+			} else if (!player.controls.grab.pressed && player.pp.partner.pp) {
+				throws.push_back({body, forward * ThrowImpulse});
 			}
 
 			//reset 'downs' since controls have been handled:
 			player.controls.jet.downs = 0;
 			player.controls.grab.downs = 0;
-			player.controls.toss.downs = 0;
 			player.controls.restart.downs = 0;
 			player.controls.turn_cc.downs = 0;
 			player.controls.turn_c.downs = 0;
@@ -340,8 +357,20 @@ void Game::update(float elapsed) {
 		float first_finish = round_step + 1.0f;
 		bool tied = false;
 		for (auto &player : players) {
+			bool was_holding = player.holding;
 			player.holding = player.pp.partner.pp != nullptr;
 			player.anchored = player.holding && player.pp.partner.pp->type == PhysicsEngine::MovementType::Static;
+
+			// adjust player rotation
+			if (player.holding && !was_holding)
+			{
+				glm::vec2 to_hold = *player.pp.partner.position - player.position;
+				player.rotation = std::atan2(to_hold.y, to_hold.x) - PlayerSpriteFacing;
+
+				//from here on the held object turns along with the player, keeping this relative rotation:
+				if (Object *object = held_object(player)) player.held_rotation = object->rotation - player.rotation;
+			}
+
 			if (level == Level::Menu) continue; //Practice has no boarding or winner.
 			bool eligible = in_boarding_area(player.position)
 				&& glm::dot(player.pp.velocity, player.pp.velocity) <= BoardingSpeed * BoardingSpeed;
@@ -392,6 +421,7 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(player.sprite);
 		connection.send(player.jets_left);
 		connection.send(uint8_t(player.can_grab ? 1 : 0));
+		connection.send(player.pp.hits);
 	};
 
 	connection.send(match_state);
@@ -476,6 +506,7 @@ bool Game::recv_state_message(Connection *connection_) {
 		uint8_t can_grab;
 		read(&can_grab);
 		player.can_grab = (can_grab != 0);
+		read(&player.pp.hits);
 	}
 
 	// objects.clear();

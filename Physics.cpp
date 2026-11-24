@@ -169,6 +169,13 @@ void PhysicsEngine::handle_collision(Body const &b1, Body const &b2, Collision c
     float j = -(1.0f + e) * vn / inv_sum;
     move_group(b1, glm::vec2(0.0f), -c.normal * (j * inv1));
     move_group(b2, glm::vec2(0.0f),  c.normal * (j * inv2));
+
+    // record a real impact; the client turns this into a sound
+    if (vn < -0.2f)     // ignore tiny bumps; tune this
+    {
+        b1.pp->hits += 1;
+        b2.pp->hits += 1;
+    }
 }
 
 void PhysicsEngine::confine(std::vector< Body > const &bodies, glm::vec2 min, glm::vec2 max)
@@ -188,11 +195,13 @@ void PhysicsEngine::confine(std::vector< Body > const &bodies, glm::vec2 min, gl
             {
                 dp[a] = lo[a] - pos;
                 dv[a] = std::abs(vel) * b.pp->elasticity - vel;
+                if (vel < -0.2f) { b.pp->hits += 1; }   // moving into the low wall fast enough
             }
             else if (pos > hi[a])
             {
                 dp[a] = hi[a] - pos;
                 dv[a] = -std::abs(vel) * b.pp->elasticity - vel;
+                if (vel > 0.2f) { b.pp->hits += 1; }    // moving into the high wall fast enough
             }
             else { continue; }
             move_group(b, dp, dv);

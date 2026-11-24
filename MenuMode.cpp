@@ -288,7 +288,7 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 		12.0f, glm::vec3(0.75f), float(drawable_size.x));
 
 	std::array< char const *, 5 > controls_help = {
-		"MOUSE AIM", "[E] HOLD TO GRAB", "[Q] THROW", "[SPACE] JET", "[R] RESET"
+		"[A] ROTATE CCW", "[D] ROTATE CW", "[S] GRAB / THROW", "[SPACE] JET", "[R] RESET"
 	};
 	for (size_t i = 0; i < controls_help.size(); ++i) {
 		float t = (float(i) - 2.0f) / 2.0f;
@@ -301,9 +301,7 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 		Player const &local = game.players.front();
 		bool holding = local.holding || local.anchored;
 		float center_x = float(drawable_size.x) - 140.0f * ui_scale;
-		draw_label(holding ? "[Q] THROW" : "[E] HOLD TO GRAB", glm::vec2(center_x, 264.0f * ui_scale),
-			10.0f, cyan, 109.0f * ui_scale);
-		if (holding) draw_label("RELEASE [E] TO LET GO", glm::vec2(center_x, 283.0f * ui_scale),
+		draw_label(holding ? "RELEASE [S] TO THROW" : "[S] HOLD TO GRAB", glm::vec2(center_x, 264.0f * ui_scale),
 			10.0f, cyan, 109.0f * ui_scale);
 	}
 

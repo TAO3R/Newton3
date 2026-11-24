@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include "Physics.hpp"
 
+#include <cmath>
 #include <string>
 #include <list>
 #include <vector>
@@ -42,13 +43,10 @@ struct Button {
 struct Player {
 	//player inputs (sent from client):
 	struct Controls {
-		Button jet;  //push toward 'aim'
-		Button grab; //held = holding on, released = let go
+		Button jet;  //space: push forward
+		Button grab; //S: press = grab, release = throw what's held forward
 		Button restart; //R restarts the shared round
-		Button toss; //throw what's held toward 'aim'
-		Button turn_cc, turn_c;
-
-		glm::vec2 aim = glm::vec2(0.0f); //mouse position, world space
+		Button turn_cc, turn_c; //A / D: rotate counter-clockwise / clockwise while held
 
 		void send_controls_message(Connection *connection) const;
 
@@ -62,6 +60,9 @@ struct Player {
 	glm::vec2 position = glm::vec2(0.0f, 0.0f);
 	float rotation = 0.0f;	// radians, around the z-axis (out of the screen)
 
+	//unit facing direction; rotation 0 faces up (+y):
+	glm::vec2 forward() const { return glm::vec2(-std::sin(rotation), std::cos(rotation)); }
+
 	//sprite used to draw this player:
 	SpriteId sprite = SpriteId::Hands;
 
@@ -71,6 +72,7 @@ struct Player {
 	bool anchored = false;
 	uint8_t jets_left = 0; //set on spawn
 	float jet_recharge = 0.0f; //server only: seconds charged toward the next jet
+	float held_rotation = 0.0f; //server only: held object's rotation relative to the player's, fixed at the grab
 	bool can_grab = false; //something is in grab range right now (drives the grab prompt)
 
 	//server only: objects in grab range, kept by Game::on_grab_range_enter / on_grab_range_exit
@@ -167,9 +169,10 @@ struct Game {
 	inline static constexpr uint8_t JetCount = 3;    //max jets per player
 	inline static constexpr float JetRechargeTime = 3.0f; //seconds to recharge one jet while below JetCount
 	inline static constexpr float GrabRange = 0.05f; //gap between colliders that still counts as in reach
-	inline static constexpr float ThrowImpulse = 0.3f; //held object gets +J toward the aim, the thrower -J
+	inline static constexpr float ThrowImpulse = 0.3f; //held object gets +J forward, the thrower -J
 	inline static constexpr float GripImpulse = 1.2f;  //a hit harder than this knocks a player off what it anchors to
 	inline static constexpr float PlayerRotSpeed = 1.0f;	// how fast player can rotate (radians / second)
+	inline static constexpr float PlayerSpriteFacing = 0.5f * float(M_PI);	// direction the player sprite faces at rotation 0
 
 	//grab range bookkeeping, called by update when an object comes into / leaves a player's reach:
 	void on_grab_range_enter(Player &player, Object &object);
