@@ -13,7 +13,7 @@ void Player::Controls::send_controls_message(Connection *connection_) const {
 	assert(connection_);
 	auto &connection = *connection_;
 
-	uint32_t size = 4 + sizeof(aim);
+	uint32_t size = 5;
 	connection.send(Message::C2S_Controls);
 	connection.send(uint8_t(size));
 	connection.send(uint8_t(size >> 8));
@@ -28,9 +28,9 @@ void Player::Controls::send_controls_message(Connection *connection_) const {
 
 	send_button(jet);
 	send_button(grab);
-	send_button(toss);
 	send_button(restart);
-	connection.send(aim);
+	send_button(turn_cc);
+	send_button(turn_c);
 }
 
 bool Player::Controls::recv_controls_message(Connection *connection_) {
@@ -45,7 +45,7 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 	uint32_t size = (uint32_t(recv_buffer[3]) << 16)
 	              | (uint32_t(recv_buffer[2]) << 8)
 	              |  uint32_t(recv_buffer[1]);
-	uint32_t expected = 4 + sizeof(aim);
+	uint32_t expected = 5;
 	if (size != expected) throw std::runtime_error("Controls message with size " + std::to_string(size) + " != " + std::to_string(expected) + "!");
 	
 	//expecting complete message:
@@ -63,9 +63,9 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 
 	recv_button(recv_buffer[4+0], &jet);
 	recv_button(recv_buffer[4+1], &grab);
-	recv_button(recv_buffer[4+2], &toss);
-	recv_button(recv_buffer[4+3], &restart);
-	std::memcpy(&aim, &recv_buffer[4+4], sizeof(aim));
+	recv_button(recv_buffer[4+2], &restart);
+	recv_button(recv_buffer[4+3], &turn_cc);
+	recv_button(recv_buffer[4+4], &turn_c);
 
 	//delete message from buffer:
 	recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + 4 + size);
@@ -265,9 +265,8 @@ void Game::update(float elapsed) {
 			PhysicsEngine::Body body{&player.position, &player.pp};
 
 			{	// rotation
-				float turn = 0.0f;
-				if (player.controls.turn_cc.pressed) { turn = PlayerRotSpeed * elapsed; }
-				else if (player.controls.turn_c.pressed) { turn = -PlayerRotSpeed * elapsed; }
+				//A and D held together cancel out:
+				float turn = (float(player.controls.turn_cc.pressed) - float(player.controls.turn_c.pressed)) * PlayerRotSpeed * elapsed;
 				player.rotation += turn;
 
 				// a held pair turns as one rigid body around its center of mass
@@ -288,11 +287,10 @@ void Game::update(float elapsed) {
 				}
 			}
 
-			//jet: one push toward the aim point per press, while jets last:
-			glm::vec2 to_aim = player.controls.aim - player.position;
+			//jet: one push forward per press, while jets last:
+			glm::vec2 forward = player.forward();
 			for (uint8_t i = 0; i < player.controls.jet.downs && player.jets_left > 0; ++i) {
-				if (to_aim == glm::vec2(0.0f)) break; //no direction, don't spend the jet
-				if (!PhysicsEngine::apply_impulse(body, glm::normalize(to_aim) * JetImpulse)) break; //anchored: can't move
+				if (!PhysicsEngine::apply_impulse(body, forward * JetImpulse)) break; //anchored: can't move
 				player.jets_left -= 1;
 			}
 
@@ -306,24 +304,16 @@ void Game::update(float elapsed) {
 			}
 			if (player.jets_left == JetCount) player.jet_recharge = 0.0f;
 
-			//throw what's held toward the aim point (the thrower recoils the other way):
-			bool tossed = false;
-			if (player.controls.toss.downs > 0 && player.pp.partner.pp && to_aim != glm::vec2(0.0f)) {
-				throws.push_back({body, glm::normalize(to_aim) * ThrowImpulse});
-				tossed = true;
-			}
-
-			//grab on press, let go once the key is up:
+			//grab on press; once the key is up, throw what's held forward (the thrower recoils the other way):
 			if (player.controls.grab.downs > 0) {
 				grabs.push_back({body, GrabRange});
-			} else if (!tossed && !player.controls.grab.pressed && player.pp.partner.pp) {
-				throws.push_back({body, glm::vec2(0.0f)});
+			} else if (!player.controls.grab.pressed && player.pp.partner.pp) {
+				throws.push_back({body, forward * ThrowImpulse});
 			}
 
 			//reset 'downs' since controls have been handled:
 			player.controls.jet.downs = 0;
 			player.controls.grab.downs = 0;
-			player.controls.toss.downs = 0;
 			player.controls.restart.downs = 0;
 			player.controls.turn_cc.downs = 0;
 			player.controls.turn_c.downs = 0;
