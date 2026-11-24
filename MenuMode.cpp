@@ -292,7 +292,7 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 		float t = (float(i) - 2.0f) / 2.0f;
 		glm::vec2 position(0.5f * float(drawable_size.x) + t * UIControlsWidth * ui_scale * 0.4f,
 			float(drawable_size.y) - (UIControlsBottom + UIControlsRise * t * t) * ui_scale);
-		draw_label(controls_help[i], position, UIControlsHeight, cyan, float(drawable_size.x));
+		draw_label(controls_help[i], position, UIControlsHeight, cyan, (UIControlsWidth * 0.2f - UIControlsGap) * ui_scale);
 	}
 
 	if (!game.players.empty()) {
