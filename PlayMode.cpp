@@ -454,6 +454,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 		//Use server-assigned labels: each client receives its own player first.
 		for (auto const &player : game.players) {
+			if (game.level == Game::Level::Menu) break;
 			bool is_local = local && player.id == local->id;
 			TextTexture const &label = cached_text(is_local ? "YOU" : "");
 			if (label.height == 0) continue;
@@ -471,7 +472,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		}
 
 		std::string action;
-		if (local && playing) {
+		if (game.level == Game::Level::Arena && local && playing) {
 			if (game.level == Game::Level::Arena && Game::in_boarding_area(local->position)) {
 				bool slow = glm::dot(local->pp.velocity, local->pp.velocity) <= Game::BoardingSpeed * Game::BoardingSpeed;
 				action = slow ? "HOLD F - ESCAPE" : "SLOW DOWN TO BOARD";
