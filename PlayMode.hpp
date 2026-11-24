@@ -53,6 +53,8 @@ struct PlayMode : Mode {
 
 	//client-only debug: outline each sprite's quad (toggle with tab):
 	bool show_sprite_bounds = false;
+	bool confirm_return = false;
+	bool leave_selected = false;
 
 	GLuint vbo = 0, vao = 0;
 
@@ -65,7 +67,7 @@ struct PlayMode : Mode {
 struct MenuMode : PlayMode
 {
 	MenuMode() : PlayMode(Game::Level::Menu) {}
-	enum class Screen { Play, Solo, Multiplayer, Host, Join, Starting };
+	enum class Screen { Play, Solo, Multiplayer, Host, Join, Starting, HostReady };
 	Screen screen = Screen::Play;
 	float selection_time = 0.0f;
 	int selection_pod = -1;
@@ -76,6 +78,7 @@ struct MenuMode : PlayMode
 	float network_time = 0.0f;
 	std::shared_ptr< void > server_process;
 	int start_attempts = 0;
+	std::shared_ptr< PlayMode > hosted_game;
 	virtual ~MenuMode();
 	void start_host();
 	void connect_room(std::string const &ip);

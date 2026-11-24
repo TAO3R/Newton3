@@ -137,6 +137,29 @@ void PlayMode::set_grab_prompt(glm::vec2 const &player_position, bool visible) {
 }
 
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
+	if (game.level == Game::Level::Arena) {
+		if (evt.type == SDL_EVENT_KEY_DOWN && !evt.key.repeat && evt.key.key == SDLK_ESCAPE) {
+			confirm_return = !confirm_return;
+			leave_selected = false;
+			controls = Player::Controls();
+			return true;
+		}
+		if (confirm_return) {
+			if (evt.type == SDL_EVENT_KEY_DOWN && !evt.key.repeat) {
+				if (evt.key.key == SDLK_UP || evt.key.key == SDLK_DOWN) leave_selected = !leave_selected;
+				else if (evt.key.key == SDLK_RETURN) {
+					if (leave_selected) {
+						auto keep_alive = shared_from_this();
+						auto menu = std::make_shared< MenuMode >();
+						if (client) client->connection.close();
+						server_lifetime.reset();
+						Mode::set_current(menu);
+					} else confirm_return = false;
+				}
+			}
+			return evt.type != SDL_EVENT_QUIT;
+		}
+	}
 
 	if (evt.type == SDL_EVENT_KEY_DOWN) {
 		if (evt.key.repeat) {
@@ -337,6 +360,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		if (game.match_state == Game::MatchState::Timeout) result = 3;
 		if (game.match_state == Game::MatchState::Disconnected) result = 4;
 		if (game.match_state == Game::MatchState::Draw) result = 5;
+		if (confirm_return) result = 6;
 
 		//Reuse text textures; changing timer text is generated only once per second.
 		auto cached_text = [&](std::string const &text) -> TextTexture const & {
@@ -706,8 +730,22 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		}
 
 		if (result != 0) {
-			glClearColor(0.015f, 0.025f, 0.04f, 1.0f);
+			if (result == 6) {
+				glm::vec2 size = glm::vec2(480.0f, 300.0f) * ui_scale;
+				glm::vec2 top_left = (glm::vec2(drawable_size) - size) * 0.5f;
+				glEnable(GL_SCISSOR_TEST);
+				glScissor(int(top_left.x), int(float(drawable_size.y) - top_left.y - size.y), int(size.x), int(size.y));
+			}
+			glClearColor(0.015f, 0.025f, result == 6 ? 0.035f : 0.04f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
+			if (result == 6) {
+				glDisable(GL_SCISSOR_TEST);
+				glm::vec2 size = glm::vec2(480.0f, 300.0f) * ui_scale;
+				glm::vec2 top_left = (glm::vec2(drawable_size) - size) * 0.5f;
+				DrawLines border(glm::ortho(0.0f, float(drawable_size.x), float(drawable_size.y), 0.0f));
+				std::array< glm::vec2, 4 > corners = {top_left, top_left + glm::vec2(size.x, 0.0f), top_left + size, top_left + glm::vec2(0.0f, size.y)};
+				for (size_t i = 0; i < corners.size(); ++i) border.draw(glm::vec3(corners[i], 0.0f), glm::vec3(corners[(i + 1) % 4], 0.0f), glm::u8vec4(166, 240, 245, 255));
+			}
 
 			char const *title = "YOU ESCAPED";
 			char const *message = "You secured the only escape pod.";
@@ -724,11 +762,16 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 			if (result == 4) {
 				title = "PLAYER DISCONNECTED";
-				message = "Waiting for a second player before restarting.";
+				message = client && !client->connection ? "Connection to the server was lost." : "The other player left the room.";
 				color = glm::vec3(1.0f, 0.8f, 0.4f);
 			} else if (result == 5) {
 				title = "DRAW";
 				message = "Both players boarded at the same time.";
+			}
+
+			if (result == 6) {
+				title = "RETURN TO MENU?";
+				message = "";
 			}
 
 			auto draw_centered = [&](char const *text, float top, float height, glm::vec3 const &text_color) {
@@ -742,9 +785,18 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				text_renderer.draw_text(texture, position, text_scale, text_color, drawable_size);
 			};
 
-			draw_centered(title, -65.0f, 42.0f, color);
-			draw_centered(message, 5.0f, 18.0f, glm::vec3(0.85f));
-			draw_centered(game.players.size() == 2 ? "R - RESTART" : "WAITING FOR SECOND PLAYER", 75.0f, 12.0f, glm::vec3(0.5f));
+			if (result != 6) {
+				draw_centered(title, -65.0f, 42.0f, color);
+				draw_centered(message, 5.0f, 18.0f, glm::vec3(0.85f));
+			}
+			if (result == 6) {
+				draw_centered(title, -122.0f, 24.0f, glm::vec3(0.65f, 0.94f, 0.96f));
+				draw_centered(leave_selected ? "CONTINUE" : "> CONTINUE", -35.0f, 16.0f, leave_selected ? glm::vec3(0.65f, 0.94f, 0.96f) : glm::vec3(1.0f, 0.93f, 0.7f));
+				draw_centered(leave_selected ? "> RETURN TO MENU" : "RETURN TO MENU", 1.0f, 16.0f, leave_selected ? glm::vec3(1.0f, 0.93f, 0.7f) : glm::vec3(0.65f, 0.94f, 0.96f));
+				draw_centered("UP / DOWN - SELECT    ENTER - CONFIRM    ESC - CONTINUE", 115.0f, 10.0f, glm::vec3(0.75f));
+			} else {
+				draw_centered(result == 4 ? "ESC - RETURN TO MENU" : "R - RESTART    ESC - RETURN TO MENU", 75.0f, 12.0f, glm::vec3(0.5f));
+			}
 		}
 
 		GL_ERRORS();
