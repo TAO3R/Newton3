@@ -207,7 +207,7 @@ bool MenuMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 				panel_message.clear();
 				if (screen == Screen::Join) { replace_ip = true; SDL_StartTextInput(Mode::window); }
 			} else if (screen == Screen::Solo) {
-				if (selected == 0) panel_message = "Single-player mode is not available yet.";
+				if (selected == 0) Mode::set_current(std::make_shared< PlayMode >(Game::Level::Solo));
 				else screen = Screen::Play;
 			} else if (screen == Screen::HostReady) {
 				if (selected == 0) {

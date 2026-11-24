@@ -103,9 +103,6 @@ Game::Game(Level level_) : level(level_) {
 		break;
 	
 	case Game::Level::Solo:
-		
-		break;
-
 	case Game::Level::Arena:
 		//props are a bit heavier than a player (1.0); a few start with a slow drift so the room isn't frozen:
 		add_prop(SpriteId::Cart,    glm::vec2( 0.85f,  0.65f), 1.3f, 1.5f, glm::vec2(-0.03f, 0.0f));
@@ -148,9 +145,6 @@ Player *Game::spawn_player() {
 			break;
 		
 		case Game::Level::Solo:
-			
-			break;
-
 		case Game::Level::Arena:
 			player.position = glm::vec2(1.3f, players.size() == 1 ? 0.75f : -0.75f);		
 		}
@@ -184,9 +178,6 @@ void Game::start_round() {
 	switch (level)
 	{
 	case Game::Level::Solo:
-		
-		break;
-
 	case Game::Level::Menu:
 	case Game::Level::Arena:
 		//Keep player addresses stable: server connections point into this list.
@@ -238,16 +229,13 @@ void Game::update(float elapsed) {
 	switch (level)
 	{
 	case Game::Level::Solo:
-		/* code */
-		break;
-
 	case Game::Level::Menu:
 	case Game::Level::Arena:
 		if (match_state != MatchState::Playing) {
 			for (auto &player : players) player.controls = Player::Controls();
 			return;
 		}
-		float round_step = level == Level::Menu ? elapsed : std::min(elapsed, time_left);
+		float round_step = level == Level::Solo ? std::min(elapsed, time_left) : elapsed;
 
 		//player actions this tick (step applies them once, then clears the lists):
 		std::vector< PhysicsEngine::Grab > grabs;
@@ -387,11 +375,11 @@ void Game::update(float elapsed) {
 			} else player.boarding = 0.0f;
 		}
 		if (level == Level::Menu) break; //Practice has no countdown.
-		time_left = std::max(0.0f, time_left - round_step);
+		if (level == Level::Solo) time_left = std::max(0.0f, time_left - round_step);
 		if (winner != 0) {
 			match_state = tied ? MatchState::Draw : MatchState::Escaped;
 			if (tied) winner = 0;
-		} else if (time_left <= 0.0f) match_state = MatchState::Timeout;
+		} else if (level == Level::Solo && time_left <= 0.0f) match_state = MatchState::Timeout;
 		break;
 	}
 }
