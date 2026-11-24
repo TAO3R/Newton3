@@ -332,7 +332,7 @@ void Game::update(float elapsed) {
 		{ //physics: step every player and object, keeping them inside the arena
 			std::vector< PhysicsEngine::Body > bodies;
 			for (auto &p : players) bodies.push_back({&p.position, &p.pp});
-			for (auto &o : objects) bodies.push_back({&o.position, &o.pp});
+			for (auto &o : objects) bodies.push_back({&o.position, &o.pp, &o.rotation}); //box colliders turn with the object
 
 			int steps = int(std::round(elapsed / PhysicsEngine::physics_dt));
 			for (int s = 0; s < steps; ++s) {
@@ -347,7 +347,7 @@ void Game::update(float elapsed) {
 			std::vector< Object * > in_range;
 			if (!player.pp.partner.pp) { //already holding something: can't grab another
 				for (auto &object : objects) {
-					PhysicsEngine::Body target{&object.position, &object.pp};
+					PhysicsEngine::Body target{&object.position, &object.pp, &object.rotation};
 					if (PhysicsEngine::can_be_grabbed(target) && PhysicsEngine::in_reach(holder, target, GrabRange)) {
 						in_range.push_back(&object);
 					}
@@ -501,6 +501,7 @@ bool Game::recv_state_message(Connection *connection_) {
 	for (uint8_t i = 0; i < player_count; ++i) {
 		players.emplace_back();
 		Player &player = players.back();
+		player.pp.collider = PhysicsEngine::CircleCollider{ PlayerRadius }; //not sent; same for every player
 		read(&player.id);
 		read(&player.boarding);
 		uint8_t holding, anchored;

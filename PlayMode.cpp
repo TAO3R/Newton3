@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <vector>
 
-PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Outfit-Regular.ttf")) {
+PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Silkscreen-Regular.ttf")) {
 	
 	{ 	//upload sprite textures (order must match SpriteId):
 		for (auto name : {"default.png", "hands.png", "cart.png", "pc.png", "probe.png", "turbine.png", "cryosleep_chamber.png", "wall_fill.png"}) {
@@ -198,7 +198,8 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			controls.turn_c.pressed = true;
 			return true;
 		} else if (evt.key.key == SDLK_TAB) {
-			show_sprite_bounds = !show_sprite_bounds;
+			// show_sprite_bounds = !show_sprite_bounds;
+			show_colliders = !show_colliders;
 			return true;
 		}
 	} else if (evt.type == SDL_EVENT_KEY_UP) {
@@ -419,8 +420,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		// );
 		world_from_clip = glm::inverse(world_to_clip); //MenuMode draws its world-space labels with this view
 
-		//world-space quad corners of each drawn sprite (4 per sprite), outlined later if show_sprite_bounds:
-		std::vector< glm::vec2 > sprite_corners;
+		// //world-space quad corners of each drawn sprite (4 per sprite), outlined later if show_sprite_bounds:
+		// std::vector< glm::vec2 > sprite_corners;
 
 		auto draw_sprite = [&](Object const &object, glm::mat4 const &to_clip, bool world_space = true) {
 			if (size_t(object.sprite) >= sl.sprites.size()) return; //bad id from server
@@ -437,12 +438,12 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				* glm::scale(glm::mat4(1.0f), glm::vec3(width * object.scale.x, height * object.scale.y, 1.0f));
 			glm::mat4 clip_from_object = to_clip * world_from_object;
 
-			if (show_sprite_bounds && world_space) {
-				//quad corners in order around the edge (skips the shared diagonal):
-				for (glm::vec2 c : {glm::vec2(-0.5f,-0.5f), glm::vec2(0.5f,-0.5f), glm::vec2(0.5f,0.5f), glm::vec2(-0.5f,0.5f)}) {
-					sprite_corners.emplace_back(world_from_object * glm::vec4(c, 0.0f, 1.0f));
-				}
-			}
+			// if (show_sprite_bounds && world_space) {
+			// 	//quad corners in order around the edge (skips the shared diagonal):
+			// 	for (glm::vec2 c : {glm::vec2(-0.5f,-0.5f), glm::vec2(0.5f,-0.5f), glm::vec2(0.5f,0.5f), glm::vec2(-0.5f,0.5f)}) {
+			// 		sprite_corners.emplace_back(world_from_object * glm::vec4(c, 0.0f, 1.0f));
+			// 	}
+			// }
 
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -538,15 +539,46 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			}
 
 
-			//sprite quad outlines (only filled when show_sprite_bounds):
-			for (size_t i = 0; i + 4 <= sprite_corners.size(); i += 4) {
-				for (size_t e = 0; e < 4; ++e) {
-					lines.draw(
-						glm::vec3(sprite_corners[i + e], 0.0f),
-						glm::vec3(sprite_corners[i + (e + 1) % 4], 0.0f),
-						glm::u8vec4(0xff, 0x00, 0xff, 0xff)
-					);
-				}
+			// //sprite quad outlines (only filled when show_sprite_bounds):
+			// for (size_t i = 0; i + 4 <= sprite_corners.size(); i += 4) {
+			// 	for (size_t e = 0; e < 4; ++e) {
+			// 		lines.draw(
+			// 			glm::vec3(sprite_corners[i + e], 0.0f),
+			// 			glm::vec3(sprite_corners[i + (e + 1) % 4], 0.0f),
+			// 			glm::u8vec4(0xff, 0x00, 0xff, 0xff)
+			// 		);
+			// 	}
+			// }
+
+			//collider outlines: circles as polygons, boxes turned by their body's rotation (same shapes physics tests):
+			if (show_colliders) {
+				glm::u8vec4 color(0x00, 0xff, 0x00, 0xff);
+				auto outline = [&](glm::vec2 position, float rotation, PhysicsEngine::Collider const &collider) {
+					if (auto *circle = std::get_if< PhysicsEngine::CircleCollider >(&collider)) {
+						int const segments = 32;
+						for (int i = 0; i < segments; ++i) {
+							float a0 = 2.0f * float(M_PI) * float(i) / float(segments);
+							float a1 = 2.0f * float(M_PI) * float(i + 1) / float(segments);
+							lines.draw(
+								glm::vec3(position + circle->radius * glm::vec2(std::cos(a0), std::sin(a0)), 0.0f),
+								glm::vec3(position + circle->radius * glm::vec2(std::cos(a1), std::sin(a1)), 0.0f),
+								color
+							);
+						}
+					} else {
+						glm::vec2 h = std::get< PhysicsEngine::BoxCollider >(collider).half_size;
+						glm::vec2 x(std::cos(rotation), std::sin(rotation)), y(-x.y, x.x);
+						glm::vec2 corners[4] = {
+							position - x * h.x - y * h.y, position + x * h.x - y * h.y,
+							position + x * h.x + y * h.y, position - x * h.x + y * h.y,
+						};
+						for (int e = 0; e < 4; ++e) {
+							lines.draw(glm::vec3(corners[e], 0.0f), glm::vec3(corners[(e + 1) % 4], 0.0f), color);
+						}
+					}
+				};
+				for (auto const &object : game.objects) outline(object.position, object.rotation, object.pp.collider);
+				for (auto const &player : game.players) outline(player.position, player.rotation, player.pp.collider);
 			}
 
 

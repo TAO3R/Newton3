@@ -27,14 +27,14 @@ struct PhysicsEngine
 
     struct BoxCollider
     {
-        glm::vec2 half_size = glm::vec2(0.06f); // axis-aligned
+        glm::vec2 half_size = glm::vec2(0.06f); // in the box's own frame, turned by the body's rotation (OBB)
     };
 
     // exactly one shape at a time; the first alternative is what a default-constructed collider holds
     using Collider = std::variant< CircleCollider, BoxCollider >;
 
-    // half size of the axis-aligned box around the collider
-    static glm::vec2 half_extent(Collider const &collider);
+    // half size of the axis-aligned box around the collider when turned by 'rotation' (radians)
+    static glm::vec2 half_extent(Collider const &collider, float rotation = 0.0f);
 
     struct PhysicsProp;
 
@@ -42,6 +42,7 @@ struct PhysicsEngine
     {
         glm::vec2 *position = nullptr;
         PhysicsProp *pp = nullptr;
+        float *rotation = nullptr;  // radians; null = unrotated (circles don't care)
     };
 
     struct PhysicsProp

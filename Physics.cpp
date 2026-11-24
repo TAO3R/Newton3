@@ -2,11 +2,18 @@
 
 #include <cmath>
 
-glm::vec2 PhysicsEngine::half_extent(Collider const &collider)
+glm::vec2 PhysicsEngine::half_extent(Collider const &collider, float rotation)
 {
     if (auto *c = std::get_if< CircleCollider >(&collider)) { return glm::vec2(c->radius); }
-    return std::get< BoxCollider >(collider).half_size;
+    glm::vec2 h = std::get< BoxCollider >(collider).half_size;
+    float c = std::abs(std::cos(rotation)), s = std::abs(std::sin(rotation));
+    return glm::vec2(c * h.x + s * h.y, s * h.x + c * h.y);
 }
+
+static float angle_of(PhysicsEngine::Body const &b) { return b.rotation ? *b.rotation : 0.0f; }
+
+// v turned by the angle whose cosine / sine are c / s
+static glm::vec2 turn(glm::vec2 v, float c, float s) { return glm::vec2(c * v.x - s * v.y, s * v.x + c * v.y); }
 
 void PhysicsEngine::advance(std::vector< Body > const &bodies, float dt)
 {
@@ -36,10 +43,10 @@ static bool circle_circle(glm::vec2 p1, float r1, glm::vec2 p2, float r2, Physic
     return true;
 }
 
-// circle vs axis-aligned box: closest point on the box closer than the radius => hit
-static bool circle_box(glm::vec2 pc, float r, glm::vec2 pb, glm::vec2 half, PhysicsEngine::Collision *hit)
+// circle vs axis-aligned box, d = circle center relative to the box center:
+// closest point on the box closer than the radius => hit
+static bool circle_box_local(glm::vec2 d, float r, glm::vec2 half, PhysicsEngine::Collision *hit)
 {
-    glm::vec2 d = pc - pb;  // circle center, relative to the box center
     glm::vec2 closest = glm::clamp(d, -half, half);
 
     if (closest != d)
@@ -68,23 +75,40 @@ static bool circle_box(glm::vec2 pc, float r, glm::vec2 pb, glm::vec2 half, Phys
     return true;
 }
 
-// axis-aligned box vs box: overlapping on both axes => hit, separated along the axis of least penetration
-static bool box_box(glm::vec2 p1, glm::vec2 half1, glm::vec2 p2, glm::vec2 half2, PhysicsEngine::Collision *hit)
+// circle vs oriented box: the axis-aligned test in the box's own frame, normal turned back to world
+static bool circle_box(glm::vec2 pc, float r, glm::vec2 pb, glm::vec2 half, float angle, PhysicsEngine::Collision *hit)
+{
+    float c = std::cos(angle), s = std::sin(angle);
+    if (!circle_box_local(turn(pc - pb, c, -s), r, half, hit)) { return false; }
+    hit->normal = turn(hit->normal, c, s);
+    return true;
+}
+
+// oriented box vs box, separating axis test: overlapping along all four edge normals => hit,
+// separated along the axis of least penetration
+static bool box_box(glm::vec2 p1, glm::vec2 half1, float a1, glm::vec2 p2, glm::vec2 half2, float a2, PhysicsEngine::Collision *hit)
 {
     glm::vec2 d = p2 - p1;
-    glm::vec2 overlap = (half1 + half2) - glm::abs(d);
-    if (overlap.x <= 0.0f || overlap.y <= 0.0f) { return false; }
+    glm::vec2 x1(std::cos(a1), std::sin(a1)), y1(-x1.y, x1.x);   // box 1's local axes in world
+    glm::vec2 x2(std::cos(a2), std::sin(a2)), y2(-x2.y, x2.x);
 
-    // exactly coincident centers have no direction, so they fall back to +x / +y
-    if (overlap.x < overlap.y)
+    // how far a box reaches from its center along unit axis n
+    auto reach = [](glm::vec2 x, glm::vec2 y, glm::vec2 half, glm::vec2 n)
     {
-        hit->normal = glm::vec2(d.x < 0.0f ? -1.0f : 1.0f, 0.0f);
-        hit->depth = overlap.x;
-    }
-    else
+        return half.x * std::abs(glm::dot(x, n)) + half.y * std::abs(glm::dot(y, n));
+    };
+
+    hit->depth = INFINITY;
+    for (glm::vec2 n : { x1, y1, x2, y2 })
     {
-        hit->normal = glm::vec2(0.0f, d.y < 0.0f ? -1.0f : 1.0f);
-        hit->depth = overlap.y;
+        float dn = glm::dot(d, n);
+        float overlap = reach(x1, y1, half1, n) + reach(x2, y2, half2, n) - std::abs(dn);
+        if (overlap <= 0.0f) { return false; }   // a gap along this axis: separated
+        if (overlap < hit->depth)
+        {   // exactly coincident centers have no direction, so they fall back to the axis itself
+            hit->normal = dn < 0.0f ? -n : n;
+            hit->depth = overlap;
+        }
     }
     return true;
 }
@@ -98,14 +122,14 @@ bool PhysicsEngine::detect_collision(Body const &b1, Body const &b2, Collision *
     auto *x2 = std::get_if< BoxCollider >(&b2.pp->collider);
 
     if (c1 && c2) { return circle_circle(*b1.position, c1->radius, *b2.position, c2->radius, hit); }
-    if (c1 && x2) { return circle_box(*b1.position, c1->radius, *b2.position, x2->half_size, hit); }
+    if (c1 && x2) { return circle_box(*b1.position, c1->radius, *b2.position, x2->half_size, angle_of(b2), hit); }
     if (x1 && c2)
     {   // same test with the pair swapped, so flip the normal back to b1 -> b2
-        if (!circle_box(*b2.position, c2->radius, *b1.position, x1->half_size, hit)) { return false; }
+        if (!circle_box(*b2.position, c2->radius, *b1.position, x1->half_size, angle_of(b1), hit)) { return false; }
         hit->normal = -hit->normal;
         return true;
     }
-    return box_box(*b1.position, x1->half_size, *b2.position, x2->half_size, hit);
+    return box_box(*b1.position, x1->half_size, angle_of(b1), *b2.position, x2->half_size, angle_of(b2), hit);
 }
 
 // a held pair acts as one body: inverse of the summed mass, or 0 when anchored to something immovable
@@ -183,7 +207,7 @@ void PhysicsEngine::confine(std::vector< Body > const &bodies, glm::vec2 min, gl
     for (Body const &b : bodies)
     {
         if (group_inv_mass(b) == 0.0f) { continue; }  // static / kinematic / anchored aren't pushed by walls either
-        glm::vec2 half = half_extent(b.pp->collider);
+        glm::vec2 half = half_extent(b.pp->collider, angle_of(b));
         glm::vec2 lo = min + half;
         glm::vec2 hi = max - half;
         for (int a = 0; a < 2; a++)
@@ -239,7 +263,7 @@ bool PhysicsEngine::in_reach(Body const &holder, Body const &target, float range
     else { std::get< BoxCollider >(reach.collider).half_size += glm::vec2(range); }
 
     Collision c;
-    if (!detect_collision(Body{ holder.position, &reach }, target, &c)) { return false; }
+    if (!detect_collision(Body{ holder.position, &reach, holder.rotation }, target, &c)) { return false; }
     if (depth) { *depth = c.depth; }
     return true;
 }
