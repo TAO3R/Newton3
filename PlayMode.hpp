@@ -128,8 +128,10 @@ struct PlayMode : Mode {
 	// sprites
 	SpriteLoader sl;
 
-	//client-only debug: outline each sprite's quad (toggle with tab):
-	bool show_sprite_bounds = false;
+	//client-only debug: outline each sprite's quad:
+	// bool show_sprite_bounds = false;
+	//client-only debug: outline each body's collider (toggle with tab):
+	bool show_colliders = false;
 	bool confirm_return = false;
 	bool leave_selected = false;
 
