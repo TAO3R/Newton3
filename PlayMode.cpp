@@ -154,6 +154,14 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			controls.restart.downs += 1;
 			controls.restart.pressed = true;
 			return true;
+		} else if (evt.key.key == SDLK_A) {
+			controls.turn_cc.downs += 1;
+			controls.turn_cc.pressed = true;
+			return true;
+		} else if (evt.key.key == SDLK_D) {
+			controls.turn_c.downs += 1;
+			controls.turn_c.pressed = true;
+			return true;
 		} else if (evt.key.key == SDLK_TAB) {
 			show_sprite_bounds = !show_sprite_bounds;
 			return true;
@@ -171,7 +179,13 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		} else if (evt.key.key == SDLK_Q) {
 			controls.toss.pressed = false;
 			return true;
-		}
+		} else if (evt.key.key == SDLK_A) {
+			controls.turn_cc.pressed = false;
+			return true;
+		} else if (evt.key.key == SDLK_D) {
+			controls.turn_c.pressed = false;
+			return true;
+		} 
 	} else if (evt.type == SDL_EVENT_MOUSE_MOTION) {
 		mouse_clip = glm::vec2(
 			2.0f * evt.motion.x / float(window_size.x) - 1.0f,
@@ -186,6 +200,12 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 void PlayMode::update(float elapsed) {
 
 	{	// process controls
+		if (controls.turn_c.pressed && controls.turn_cc.pressed)
+		{
+			controls.turn_c.pressed = false;
+			controls.turn_cc.pressed = false;
+		}
+
 		//aim at the mouse, in world space:
 		controls.aim = glm::vec2(world_from_clip * glm::vec4(mouse_clip, 0.0f, 1.0f));
 	}
@@ -200,6 +220,8 @@ void PlayMode::update(float elapsed) {
 		controls.grab.downs = 0;
 		controls.toss.downs = 0;
 		controls.restart.downs = 0;
+		controls.turn_cc.downs = 0;
+		controls.turn_c.downs = 0;
 		
 		//send/receive data:
 		client->poll([this](Connection *c, Connection::Event event){
@@ -239,14 +261,18 @@ void PlayMode::update(float elapsed) {
 		{
 			game.spawn_player();
 			game.start_round();
+			// game.camera.position = game.players.front().position;
+			// game.camera.rotation = game.players.front().rotation;
 		}
 		
-		Player &local = game.players.front();;
+		Player &local = game.players.front();
 		auto feed = [](Button &to, Button &from) { to.downs += from.downs; to.pressed = from.pressed; from.downs = 0; };
 		feed(local.controls.jet, controls.jet);
 		feed(local.controls.grab, controls.grab);
 		feed(local.controls.toss, controls.toss);
 		feed(local.controls.restart, controls.restart);
+		feed(local.controls.turn_cc, controls.turn_cc);
+		feed(local.controls.turn_c, controls.turn_c);
 		local.controls.aim = controls.aim;
 
 		// update game with fixed ticks
@@ -255,6 +281,27 @@ void PlayMode::update(float elapsed) {
 		{
 			game.update(Game::Tick);
 			tick_acc -= Game::Tick;
+		}
+	}
+
+	{	// camear update, which is only based on local player position
+		if (game.players.size() == 0) { std::cerr << "No player for the camera to focus on." << std::endl; }
+		else
+		{
+			Player const &local = game.players.front();
+			glm::vec2 dir = glm::vec2(local.position - game.camera.position);	// camera to local player dir
+			// float magnitude = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+			// dir = glm::vec2(dir.x / magnitude, dir.y / magnitude);
+
+			// float pos_diff = float(std::sqrt(std::pow((local.position.x - game.camera.position.x), 2) + 
+			// 					   std::pow((local.position.y - game.camera.position.y), 2)));
+			
+			float rot_diff = std::remainder(local.rotation - game.camera.rotation, 2.0f * float(M_PI));	// shorted signed angle
+
+			float move_t = 1.0f - std::exp(-game.cam_move_speed * elapsed);
+			float rot_t  = 1.0f - std::exp(-game.cam_rot_speed * elapsed);
+			game.camera.position += (local.position - game.camera.position) * move_t;
+			game.camera.rotation += rot_diff * rot_t;
 		}
 	}
 	
@@ -357,8 +404,10 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			float width = object.width;
 			float height = width * float(sprite.size.y) / float (sprite.size.x);
 
+			float rot = world_space ? object.rotation : 0.0f;
+
 			glm::mat4 world_from_object = glm::translate(glm::mat4(1.0f), glm::vec3(object.position, 0.0f))
-				* glm::rotate(glm::mat4(1.0f), 0.0f, glm::vec3(0.0f, 0.0f, 1.0f))
+				* glm::rotate(glm::mat4(1.0f), rot, glm::vec3(0.0f, 0.0f, 1.0f))
 				* glm::scale(glm::mat4(1.0f), glm::vec3(width * object.scale.x, height * object.scale.y, 1.0f));
 			glm::mat4 clip_from_object = to_clip * world_from_object;
 
@@ -395,6 +444,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			Object body;
 			body.sprite = player.sprite;
 			body.position = player.position;
+			body.rotation = player.rotation;
 			body.width = 2.0f * Game::PlayerRadius;
 			draw_sprite(body, world_to_clip);
 		}

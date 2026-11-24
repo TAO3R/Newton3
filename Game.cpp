@@ -255,6 +255,11 @@ void Game::update(float elapsed) {
 		for (auto &player : players) {
 			PhysicsEngine::Body body{&player.position, &player.pp};
 
+			{	// rotation
+				if (player.controls.turn_cc.pressed) { player.rotation += PlayerRotSpeed * elapsed; }
+				else if (player.controls.turn_c.pressed) { player.rotation -= PlayerRotSpeed * elapsed; }
+			}
+
 			//jet: one push toward the aim point per press, while jets last:
 			glm::vec2 to_aim = player.controls.aim - player.position;
 			for (uint8_t i = 0; i < player.controls.jet.downs && player.jets_left > 0; ++i) {
@@ -292,6 +297,8 @@ void Game::update(float elapsed) {
 			player.controls.grab.downs = 0;
 			player.controls.toss.downs = 0;
 			player.controls.restart.downs = 0;
+			player.controls.turn_cc.downs = 0;
+			player.controls.turn_c.downs = 0;
 		}
 
 		{ //physics: step every player and object, keeping them inside the arena
