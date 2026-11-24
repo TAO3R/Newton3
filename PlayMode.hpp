@@ -56,6 +56,8 @@ struct PlayMode : Mode {
 
 	GLuint vbo = 0, vao = 0;
 
+	std::shared_ptr< void > server_lifetime; //Owned host process job; shared with the connected mode.
+	std::string room_address;
 	std::unique_ptr< Client >  client;	// null = local play
 	float tick_acc = 0.0f;	// local fixed-step accumulator
 };
@@ -63,12 +65,22 @@ struct PlayMode : Mode {
 struct MenuMode : PlayMode
 {
 	MenuMode() : PlayMode(Game::Level::Menu) {}
-	enum class Screen { Play, Solo, Multiplayer, Host, Join };
+	enum class Screen { Play, Solo, Multiplayer, Host, Join, Starting };
 	Screen screen = Screen::Play;
 	float selection_time = 0.0f;
 	int selection_pod = -1;
 	int selected = 0;
 	std::string panel_message;
+	std::string join_ip = "127.0.0.1";
+	bool replace_ip = true;
+	float network_time = 0.0f;
+	std::shared_ptr< void > server_process;
+	int start_attempts = 0;
+	virtual ~MenuMode();
+	void start_host();
+	void connect_room(std::string const &ip);
+	void cancel_connection();
+	void update_connection(float elapsed);
 	virtual bool handle_event(SDL_Event const &, glm::uvec2 const &window_size) override;
 	virtual void update(float elapsed) override;
 	virtual void draw(glm::uvec2 const &drawable_size) override;
