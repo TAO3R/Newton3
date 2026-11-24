@@ -256,6 +256,11 @@ void Game::update(float elapsed) {
 		for (auto &player : players) {
 			PhysicsEngine::Body body{&player.position, &player.pp};
 
+			{	// rotation
+				if (player.controls.turn_cc.pressed) { player.rotation += PlayerRotSpeed * elapsed; }
+				else if (player.controls.turn_c.pressed) { player.rotation -= PlayerRotSpeed * elapsed; }
+			}
+
 			//jet: one push toward the aim point per press, while jets last:
 			glm::vec2 to_aim = player.controls.aim - player.position;
 			for (uint8_t i = 0; i < player.controls.jet.downs && player.jets_left > 0; ++i) {
@@ -293,6 +298,8 @@ void Game::update(float elapsed) {
 			player.controls.grab.downs = 0;
 			player.controls.toss.downs = 0;
 			player.controls.restart.downs = 0;
+			player.controls.turn_cc.downs = 0;
+			player.controls.turn_c.downs = 0;
 		}
 
 		{ //physics: step every player and object, keeping them inside the arena
@@ -380,6 +387,7 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(uint8_t(player.holding));
 		connection.send(uint8_t(player.anchored));
 		connection.send(player.position);
+		connection.send(player.rotation);
 		connection.send(player.pp.velocity);
 		connection.send(player.sprite);
 		connection.send(player.jets_left);
@@ -401,6 +409,7 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 	//send object info helper:
 	auto send_object = [&](Object const &object) {
 		connection.send(object.position);
+		connection.send(object.rotation);
 		// connection.send(object.scale);
 		// connection.send(object.sprite);
 		// connection.send(object.width);
@@ -460,6 +469,7 @@ bool Game::recv_state_message(Connection *connection_) {
 		player.holding = holding != 0;
 		player.anchored = anchored != 0;
 		read(&player.position);
+		read(&player.rotation);
 		read(&player.pp.velocity);
 		read(&player.sprite);
 		read(&player.jets_left);
@@ -474,6 +484,7 @@ bool Game::recv_state_message(Connection *connection_) {
 	if (object_count != objects.size()) { throw	std::runtime_error("Object count mismatch between server and client."); }
 	for (auto &object : objects) {
 		read(&object.position);
+		read(&object.rotation);
 	}
 
 	if (at != size) throw std::runtime_error("Trailing data in state message.");
