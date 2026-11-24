@@ -70,6 +70,8 @@ struct PhysicsEngine
             assert(mass > 0.0f);
             return type == MovementType::Dynamic ? 1.0f / mass : 0.0f;
         }
+
+        uint8_t hits = 0;
     };
 
     struct Collision

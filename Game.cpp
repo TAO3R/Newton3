@@ -392,6 +392,7 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(player.sprite);
 		connection.send(player.jets_left);
 		connection.send(uint8_t(player.can_grab ? 1 : 0));
+		connection.send(player.pp.hits);
 	};
 
 	connection.send(match_state);
@@ -476,6 +477,7 @@ bool Game::recv_state_message(Connection *connection_) {
 		uint8_t can_grab;
 		read(&can_grab);
 		player.can_grab = (can_grab != 0);
+		read(&player.pp.hits);
 	}
 
 	// objects.clear();

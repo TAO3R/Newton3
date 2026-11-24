@@ -5,6 +5,7 @@
 #include "gl_errors.hpp"
 #include "data_path.hpp"
 #include "hex_dump.hpp"
+#include "Sounds.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -15,6 +16,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Outfit-Regular.ttf")) {
 	
@@ -115,6 +117,8 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Ou
 
 		GL_ERRORS();
 	}
+
+	bgm = Sound::loop(*bgm_sample, 0.4f, 0.0f);   // keep a std::shared_ptr< Sound::PlayingSample > bgm; member
 }
 
 PlayMode::PlayMode(std::string const &host, std::string const &port) : PlayMode(Game::Level::Arena) {
@@ -128,6 +132,7 @@ PlayMode::~PlayMode() {
 	for (auto &entry : text_cache) {
 		text_renderer.destroy_text(entry.second);
 	}
+	if (bgm) bgm->stop();
 }
 
 void PlayMode::set_grab_prompt(glm::vec2 const &player_position, bool visible) {
@@ -306,6 +311,23 @@ void PlayMode::update(float elapsed) {
 			game.camera.position += (local.position - game.camera.position) * move_t;
 			game.camera.rotation += rot_diff * rot_t;
 		}
+	}
+
+	{ // play hit sound
+		if (!game.players.empty()) {
+			uint8_t hits = game.players.front().pp.hits;
+			bool round_started = game.match_state == Game::MatchState::Playing
+			                  && last_match_state != Game::MatchState::Playing;
+			if (round_started) {
+				last_hits = hits;   // counter was reset by start_round(); resync without playing
+			} else if (hits != last_hits) {
+				static std::mt19937 gen(std::random_device{}());
+				std::uniform_int_distribution< size_t > dist(0, hit_samples->size() - 1);
+				Sound::play((*hit_samples)[dist(gen)], 1.0f, 0.0f);
+				last_hits = hits;
+			}
+		}
+		last_match_state = game.match_state;
 	}
 	
 }	// end of update
