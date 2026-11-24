@@ -4,6 +4,7 @@
 #include "Game.hpp"
 #include "SpriteLoader.hpp"
 #include "TextRenderer.hpp"
+#include "Sounds.hpp"
 
 #include <map>
 
@@ -58,6 +59,12 @@ struct PlayMode : Mode {
 
 	std::unique_ptr< Client >  client;	// null = local play
 	float tick_acc = 0.0f;	// local fixed-step accumulator
+
+	// sounds
+	std::shared_ptr< Sound::PlayingSample > bgm;
+
+	int last_hits = 0; // previous number of hits for player body
+	Game::MatchState last_match_state = Game::MatchState::Waiting;
 };
 
 struct MenuMode : PlayMode

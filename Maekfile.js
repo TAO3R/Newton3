@@ -153,6 +153,7 @@ if (maek.OS === 'windows') {
 const client_names = [
 	maek.CPP('client.cpp'),
 	maek.CPP('PlayMode.cpp'),
+	maek.CPP('Sounds.cpp'),
 	maek.CPP('TextRenderer.cpp'),
 	maek.CPP('LitColorTextureProgram.cpp'),
 	maek.CPP('ColorTextureProgram.cpp'),
