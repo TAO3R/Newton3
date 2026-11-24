@@ -127,7 +127,7 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Si
 
 	static std::weak_ptr< Sound::PlayingSample > shared_bgm;
 	bgm = shared_bgm.lock();
-	if (!bgm) { bgm = Sound::loop(*bgm_sample, 0.4f, 0.0f); shared_bgm = bgm; }
+	if (!bgm) { bgm = Sound::loop(*bgm_sample, 1.0f, 0.0f); shared_bgm = bgm; }
 }
 
 PlayMode::PlayMode(std::string const &host, std::string const &port) : PlayMode(Game::Level::Arena) {
@@ -332,7 +332,7 @@ void PlayMode::update(float elapsed) {
 			} else if (hits != last_hits) {
 				static std::mt19937 gen(std::random_device{}());
 				std::uniform_int_distribution< size_t > dist(0, hit_samples->size() - 1);
-				Sound::play((*hit_samples)[dist(gen)], 1.0f, 0.0f);
+				Sound::play((*hit_samples)[dist(gen)], 1.2f, 0.0f);
 				last_hits = hits;
 			}
 		}
