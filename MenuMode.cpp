@@ -282,9 +282,9 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 		text_renderer.draw_text(label, position, text_scale, color, drawable_size);
 	};
 
-	draw_label("NEWTON³", glm::vec2(0.5f * float(drawable_size.x), 14.0f * ui_scale),
-		40.0f, glm::vec3(1.0f), float(drawable_size.x));
-	draw_label("Every action has a reaction.", glm::vec2(0.5f * float(drawable_size.x), 66.0f * ui_scale),
+	draw_label("NEWTON³", glm::vec2(0.5f * float(drawable_size.x), UIMenuTitleTop * ui_scale),
+		UIMenuTitleHeight, glm::vec3(1.0f), float(drawable_size.x));
+	draw_label("Every action has a reaction.", glm::vec2(0.5f * float(drawable_size.x), UIMenuSubtitleTop * ui_scale),
 		12.0f, glm::vec3(0.75f), float(drawable_size.x));
 
 	std::array< char const *, 5 > controls_help = {
@@ -292,17 +292,17 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 	};
 	for (size_t i = 0; i < controls_help.size(); ++i) {
 		float t = (float(i) - 2.0f) / 2.0f;
-		glm::vec2 position(0.5f * float(drawable_size.x) + t * 800.0f * ui_scale * 0.4f,
-			float(drawable_size.y) - (45.0f + 35.0f * t * t) * ui_scale);
-		draw_label(controls_help[i], position, 11.0f, cyan, float(drawable_size.x));
+		glm::vec2 position(0.5f * float(drawable_size.x) + t * UIControlsWidth * ui_scale * 0.4f,
+			float(drawable_size.y) - (UIControlsBottom + UIControlsRise * t * t) * ui_scale);
+		draw_label(controls_help[i], position, UIControlsHeight, cyan, float(drawable_size.x));
 	}
 
 	if (!game.players.empty()) {
 		Player const &local = game.players.front();
 		bool holding = local.holding || local.anchored;
-		float center_x = float(drawable_size.x) - 140.0f * ui_scale;
-		draw_label(holding ? "RELEASE [S] TO THROW" : "[S] HOLD TO GRAB", glm::vec2(center_x, 264.0f * ui_scale),
-			10.0f, cyan, 109.0f * ui_scale);
+		float center_x = float(drawable_size.x) - UIHandsRight * ui_scale;
+		draw_label(holding ? "RELEASE [S] TO THROW" : "[S] HOLD TO GRAB", glm::vec2(center_x, UIHandsHintTop * ui_scale),
+			UIHandsHintHeight, cyan, (UIHandsWidth - UIHandsPadding) * ui_scale);
 	}
 
 	for (auto const &object : game.objects) {
@@ -311,16 +311,16 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 		glm::vec2 center((clip.x * 0.5f + 0.5f) * float(drawable_size.x),
 			(0.5f - clip.y * 0.5f) * float(drawable_size.y));
 		bool solo = object.position.y > 0.0f;
-		draw_label(solo ? "SINGLE PLAYER" : "MULTIPLAYER", center - glm::vec2(0.0f, 85.0f * ui_scale),
-			16.0f, cyan, 200.0f * ui_scale);
-		draw_label(solo ? "Learn at your own pace" : "Two players. One way out.", center - glm::vec2(0.0f, 61.0f * ui_scale),
-			11.0f, glm::vec3(0.65f, 0.72f, 0.75f), 200.0f * ui_scale);
+		draw_label(solo ? "SINGLE PLAYER" : "MULTIPLAYER", center - glm::vec2(0.0f, UIPodTitleAbove * ui_scale),
+			16.0f, cyan, UIPodTextWidth * ui_scale);
+		draw_label(solo ? "Learn at your own pace" : "Two players. One way out.", center - glm::vec2(0.0f, UIPodSubtitleAbove * ui_scale),
+			11.0f, glm::vec3(0.65f, 0.72f, 0.75f), UIPodTextWidth * ui_scale);
 
 		bool nearby = !game.players.empty() && glm::distance(game.players.front().position, object.position) < 0.4f;
 		if (nearby && screen == Screen::Play) {
 			std::string hint = "STOP TO SELECT";
 			if (selection_pod == (solo ? 0 : 1)) hint = "SELECTING " + std::to_string(int(std::ceil(Game::BoardingTime - selection_time))) + "s";
-			draw_label(hint, center + glm::vec2(0.0f, 60.0f * ui_scale), 12.0f, cyan, 200.0f * ui_scale);
+			draw_label(hint, center + glm::vec2(0.0f, UIPodHintBelow * ui_scale), 12.0f, cyan, UIPodTextWidth * ui_scale);
 		}
 		glm::u8vec4 color = nearby ? glm::u8vec4(255, 238, 180, 255) : glm::u8vec4(150, 143, 115, 255);
 		DrawLines corners(world_to_clip);
@@ -334,7 +334,7 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 	}
 	if (screen != Screen::Play) {
 		glm::vec2 center = glm::vec2(drawable_size) * 0.5f;
-		glm::vec2 size = glm::vec2(480.0f, 300.0f) * ui_scale;
+		glm::vec2 size = glm::vec2(UIPanelWidth, UIPanelHeight) * ui_scale;
 		glm::vec2 top_left = center - size * 0.5f;
 		glEnable(GL_SCISSOR_TEST);
 		glScissor(int(top_left.x), int(float(drawable_size.y) - top_left.y - size.y), int(size.x), int(size.y));
@@ -348,7 +348,7 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 		}
 		bool connecting = screen == Screen::Starting;
 		char const *title = connecting ? "CONNECTING" : screen == Screen::Solo ? "SINGLE PLAYER" : screen == Screen::Host || screen == Screen::HostReady ? "HOST GAME" : screen == Screen::Join ? "JOIN GAME" : "MULTIPLAYER";
-		draw_label(title, glm::vec2(center.x, top_left.y + 28.0f * ui_scale), 24.0f, cyan, size.x - 32.0f * ui_scale);
+		draw_label(title, glm::vec2(center.x, top_left.y + UIPanelTitleTop * ui_scale), UIPanelTitleHeight, cyan, size.x - UIPanelPadding * ui_scale);
 		std::array< char const *, 3 > options = {"HOST GAME", "JOIN GAME", "BACK"};
 		int count = 3;
 		if (screen == Screen::Solo) { options = {"START", "BACK", ""}; count = 2; }
@@ -358,31 +358,31 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 		if (screen == Screen::HostReady) {
 			options = {"COPY IP", "ENTER GAME", "BACK"}; count = 3;
 			draw_label("Server ready. Share your IP with the other player.", glm::vec2(center.x, top_left.y + 68.0f * ui_scale),
-				12.0f, cyan, size.x - 32.0f * ui_scale);
-			draw_label(room_address, glm::vec2(center.x, top_left.y + 94.0f * ui_scale), 14.0f, cyan, size.x - 32.0f * ui_scale);
+				12.0f, cyan, size.x - UIPanelPadding * ui_scale);
+			draw_label(room_address, glm::vec2(center.x, top_left.y + 94.0f * ui_scale), 14.0f, cyan, size.x - UIPanelPadding * ui_scale);
 		}
 		if (screen == Screen::Join) {
 			options = {"CONNECT", "BACK", ""}; count = 2;
 			draw_label("IP: " + join_ip + "_", glm::vec2(center.x, top_left.y + 76.0f * ui_scale),
-				16.0f, cyan, size.x - 32.0f * ui_scale);
+				16.0f, cyan, size.x - UIPanelPadding * ui_scale);
 			draw_label("BACKSPACE - CLEAR    TYPE IP OR CTRL+V TO PASTE", glm::vec2(center.x, top_left.y + 96.0f * ui_scale),
-				10.0f, glm::vec3(0.75f), size.x - 32.0f * ui_scale);
+				10.0f, glm::vec3(0.75f), size.x - UIPanelPadding * ui_scale);
 		}
 		if (connecting) {
 			count = 0;
 			draw_label("Starting room...",
-				glm::vec2(center.x, top_left.y + 115.0f * ui_scale), 16.0f, cyan, size.x - 32.0f * ui_scale);
+				glm::vec2(center.x, top_left.y + 115.0f * ui_scale), 16.0f, cyan, size.x - UIPanelPadding * ui_scale);
 			if (!room_address.empty()) draw_label(room_address, glm::vec2(center.x, top_left.y + 155.0f * ui_scale),
-				12.0f, cyan, size.x - 32.0f * ui_scale);
+				12.0f, cyan, size.x - UIPanelPadding * ui_scale);
 		}
 		for (int i = 0; i < count; ++i) {
 			std::string text = std::string(i == selected ? "> " : "") + options[size_t(i)];
-			draw_label(text, glm::vec2(center.x, top_left.y + ((screen == Screen::HostReady ? 127.0f : 115.0f) + 36.0f * float(i)) * ui_scale),
-				16.0f, i == selected ? glm::vec3(1.0f, 0.93f, 0.7f) : cyan, size.x - 32.0f * ui_scale);
+			draw_label(text, glm::vec2(center.x, top_left.y + ((screen == Screen::HostReady ? UIHostOptionsTop : UIPanelOptionsTop) + UIPanelOptionGap * float(i)) * ui_scale),
+				UIPanelOptionHeight, i == selected ? glm::vec3(1.0f, 0.93f, 0.7f) : cyan, size.x - UIPanelPadding * ui_scale);
 		}
-		draw_label(panel_message, glm::vec2(center.x, top_left.y + 220.0f * ui_scale), 12.0f, glm::vec3(0.9f, 0.75f, 0.55f), size.x - 32.0f * ui_scale);
-		draw_label(connecting ? "ESC - CANCEL" : screen == Screen::Join ? "TYPE IP / CTRL+V    ENTER - CONNECT    ESC - BACK" : "UP / DOWN - SELECT    ENTER - CONFIRM    ESC - BACK", glm::vec2(center.x, top_left.y + 265.0f * ui_scale),
-			10.0f, glm::vec3(0.75f), size.x - 32.0f * ui_scale);
+		draw_label(panel_message, glm::vec2(center.x, top_left.y + UIPanelMessageTop * ui_scale), 12.0f, glm::vec3(0.9f, 0.75f, 0.55f), size.x - UIPanelPadding * ui_scale);
+		draw_label(connecting ? "ESC - CANCEL" : screen == Screen::Join ? "TYPE IP / CTRL+V    ENTER - CONNECT    ESC - BACK" : "UP / DOWN - SELECT    ENTER - CONFIRM    ESC - BACK", glm::vec2(center.x, top_left.y + UIPanelHelpTop * ui_scale),
+			10.0f, glm::vec3(0.75f), size.x - UIPanelPadding * ui_scale);
 	}
 
 }
