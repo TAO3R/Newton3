@@ -53,7 +53,7 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Ou
 		//Common labels; changing match text is cached when first displayed.
 		text_cache.emplace("01:30", text_renderer.make_text("01:30"));
 		text_cache.emplace("ESCAPE POD", text_renderer.make_text("ESCAPE POD"));
-		text_cache.emplace("E - GRAB", text_renderer.make_text("E - GRAB"));
+		text_cache.emplace("HOLD S - GRAB", text_renderer.make_text("HOLD S - GRAB"));
 		for (auto text : {
 			"BOARDING", "YOU ESCAPED", "LEFT BEHIND", "TIME'S UP",
 			"You secured the only escape pod.", "Your opponent took the escape pod.",
@@ -150,13 +150,9 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			controls.jet.downs += 1;
 			controls.jet.pressed = true;
 			return true;
-		} else if (evt.key.key == SDLK_E) {
+		} else if (evt.key.key == SDLK_S) {
 			controls.grab.downs += 1;
 			controls.grab.pressed = true;
-			return true;
-		} else if (evt.key.key == SDLK_Q) {
-			controls.toss.downs += 1;
-			controls.toss.pressed = true;
 			return true;
 		} else if (evt.key.key == SDLK_R) {
 			controls.restart.downs += 1;
@@ -178,14 +174,11 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		if (evt.key.key == SDLK_SPACE) {
 			controls.jet.pressed = false;
 			return true;
-		} else if (evt.key.key == SDLK_E) {
+		} else if (evt.key.key == SDLK_S) {
 			controls.grab.pressed = false;
 			return true;
 		} else if (evt.key.key == SDLK_R) {
 			controls.restart.pressed = false;
-			return true;
-		} else if (evt.key.key == SDLK_Q) {
-			controls.toss.pressed = false;
 			return true;
 		} else if (evt.key.key == SDLK_A) {
 			controls.turn_cc.pressed = false;
@@ -193,13 +186,7 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		} else if (evt.key.key == SDLK_D) {
 			controls.turn_c.pressed = false;
 			return true;
-		} 
-	} else if (evt.type == SDL_EVENT_MOUSE_MOTION) {
-		mouse_clip = glm::vec2(
-			2.0f * evt.motion.x / float(window_size.x) - 1.0f,
-			1.0f - 2.0f * evt.motion.y / float(window_size.y)
-		);
-		return true;
+		}
 	}
 
 	return false;
@@ -207,17 +194,6 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 
 void PlayMode::update(float elapsed) {
 
-	{	// process controls
-		if (controls.turn_c.pressed && controls.turn_cc.pressed)
-		{
-			controls.turn_c.pressed = false;
-			controls.turn_cc.pressed = false;
-		}
-
-		//aim at the mouse, in world space:
-		controls.aim = glm::vec2(world_from_clip * glm::vec4(mouse_clip, 0.0f, 1.0f));
-	}
-	
 	if (client)	// process at server
 	{
 		if (!client->connection) { game.match_state = Game::MatchState::Disconnected; return; }
@@ -227,7 +203,6 @@ void PlayMode::update(float elapsed) {
 		//reset button press counters:
 		controls.jet.downs = 0;
 		controls.grab.downs = 0;
-		controls.toss.downs = 0;
 		controls.restart.downs = 0;
 		controls.turn_cc.downs = 0;
 		controls.turn_c.downs = 0;
@@ -278,11 +253,9 @@ void PlayMode::update(float elapsed) {
 		auto feed = [](Button &to, Button &from) { to.downs += from.downs; to.pressed = from.pressed; from.downs = 0; };
 		feed(local.controls.jet, controls.jet);
 		feed(local.controls.grab, controls.grab);
-		feed(local.controls.toss, controls.toss);
 		feed(local.controls.restart, controls.restart);
 		feed(local.controls.turn_cc, controls.turn_cc);
 		feed(local.controls.turn_c, controls.turn_c);
-		local.controls.aim = controls.aim;
 
 		// update game with fixed ticks
 		tick_acc += elapsed;
@@ -414,7 +387,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		// 	0.0f, 0.0f, 1.0f, 0.0f,
 		// 	offset.x * scale / aspect, offset.y * scale + (footer_height - header_height) / float(drawable_size.y), 0.0f, 1.0f
 		// );
-		world_from_clip = glm::inverse(world_to_clip); //for turning the mouse into an aim point
+		world_from_clip = glm::inverse(world_to_clip); //MenuMode draws its world-space labels with this view
 
 		//world-space quad corners of each drawn sprite (4 per sprite), outlined later if show_sprite_bounds:
 		std::vector< glm::vec2 > sprite_corners;
@@ -476,11 +449,9 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			DrawLines lines(world_to_clip);
 
 			if (local && playing) {
-				//Jet impulse points toward the cursor, not opposite the exhaust.
-				glm::vec2 aim = glm::vec2(world_from_clip * glm::vec4(mouse_clip, 0.0f, 1.0f));
-				glm::vec2 direction = aim - local->position;
-				if (glm::dot(direction, direction) > 0.000001f) {
-					direction = glm::normalize(direction);
+				//Jet impulse (and throws) point where the player faces, not opposite the exhaust.
+				glm::vec2 direction = local->forward();
+				{
 					glm::vec2 side(-direction.y, direction.x);
 					glm::vec2 start = local->position + direction * (Game::PlayerRadius + 0.035f);
 					glm::vec2 tip = start + direction * 0.18f;
@@ -560,9 +531,9 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			if (game.level == Game::Level::Arena && Game::in_boarding_area(local->position)) {
 				bool slow = glm::dot(local->pp.velocity, local->pp.velocity) <= Game::BoardingSpeed * Game::BoardingSpeed;
 				action = slow ? "HOLD F - ESCAPE" : "SLOW DOWN TO BOARD";
-			} else if (local->anchored) action = "ANCHORED | RELEASE E / Q - PUSH OFF";
-			else if (local->holding) action = "Q - THROW | RELEASE E - LET GO";
-			else if (show_grab_prompt) action = "HOLD E - GRAB";
+			} else if (local->anchored) action = "ANCHORED | RELEASE S - PUSH OFF";
+			else if (local->holding) action = "RELEASE S - THROW";
+			else if (show_grab_prompt) action = "HOLD S - GRAB";
 		}
 		if (!action.empty()) {
 			TextTexture const &prompt = cached_text(action);
@@ -644,7 +615,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			}
 			//Planned keyboard controls; input implementation is handled separately.
 			std::array< char const *, 5 > controls_help = {
-				"[A] ROTATE CCW", "[D] ROTATE CW", "[F] GRAB / THROW", "[SPACE] JET", "[R] RESTART"
+				"[A] ROTATE CCW", "[D] ROTATE CW", "[S] GRAB / THROW", "[SPACE] JET", "[R] RESTART"
 			};
 			float help_width = 800.0f * ui_scale; // Controls horizontal spacing; increase to spread labels apart.
 			for (size_t i = 0; i < controls_help.size(); ++i) {
@@ -713,7 +684,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			}
 			if (game.level == Game::Level::Arena) {
 				std::array< char const *, 2 > hints = {
-					holding ? "RELEASE [F] TO THROW" : "[F] HOLD TO GRAB", holding ? "" : "RELEASE TO THROW"
+					holding ? "RELEASE [S] TO THROW" : "[S] HOLD TO GRAB", holding ? "" : "RELEASE TO THROW"
 				};
 				for (size_t row = 0; row < hints.size(); ++row) {
 					TextTexture const &label = cached_text(hints[row]);

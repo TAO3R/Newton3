@@ -35,8 +35,7 @@ struct PlayMode : Mode {
 	//input tracking for local player:
 	Player::Controls controls;
 
-	//mouse in clip space, turned into controls.aim (world space) with the last drawn view:
-	glm::vec2 mouse_clip = glm::vec2(0.0f);
+	//inverse of the last drawn view (MenuMode recovers world_to_clip from it for its labels):
 	glm::mat4 world_from_clip = glm::mat4(1.0f);
 
 	//latest game state (from server):
