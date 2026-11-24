@@ -42,11 +42,11 @@ struct Button {
 struct Player {
 	//player inputs (sent from client):
 	struct Controls {
-		Button left, right, up, down;
 		Button jet;  //push toward 'aim'
 		Button grab; //held = holding on, released = let go
 		Button restart; //R restarts the shared round
 		Button toss; //throw what's held toward 'aim'
+		Button turn_cc, turn_c;
 
 		glm::vec2 aim = glm::vec2(0.0f); //mouse position, world space
 
@@ -169,8 +169,13 @@ struct Game {
 	inline static constexpr float GrabRange = 0.05f; //gap between colliders that still counts as in reach
 	inline static constexpr float ThrowImpulse = 0.3f; //held object gets +J toward the aim, the thrower -J
 	inline static constexpr float GripImpulse = 1.2f;  //a hit harder than this knocks a player off what it anchors to
+	inline static constexpr float PlayerRotSpeed = 1.0f;	// how fast player can rotate (radians / second)
 
 	//grab range bookkeeping, called by update when an object comes into / leaves a player's reach:
 	void on_grab_range_enter(Player &player, Object &object);
 	void on_grab_range_exit(Player &player, Object &object);
+
+	// camera constants
+	float cam_move_speed = 3.0f;
+	float cam_rot_speed = 6.0f;
 };
