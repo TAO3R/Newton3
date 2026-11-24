@@ -526,17 +526,6 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				}
 			}
 
-			if (game.level != Game::Level::Menu) { //boarding area outline for checking placement:
-				glm::vec2 min = Game::EscapeAreaMin;
-				glm::vec2 max = Game::EscapeAreaMax;
-				glm::u8vec4 color(0x60, 0xc8, 0xdf, 0xff);
-
-				lines.draw(glm::vec3(min.x, min.y, 0.0f), glm::vec3(max.x, min.y, 0.0f), color);
-				lines.draw(glm::vec3(max.x, min.y, 0.0f), glm::vec3(max.x, max.y, 0.0f), color);
-				lines.draw(glm::vec3(max.x, max.y, 0.0f), glm::vec3(min.x, max.y, 0.0f), color);
-				lines.draw(glm::vec3(min.x, max.y, 0.0f), glm::vec3(min.x, min.y, 0.0f), color);
-			}
-
 
 			//sprite quad outlines (only filled when show_sprite_bounds):
 			for (size_t i = 0; i + 4 <= sprite_corners.size(); i += 4) {
@@ -585,13 +574,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		}
 
 		std::string action;
-		if (game.level != Game::Level::Menu && local && playing) {
-			if (game.level != Game::Level::Menu && Game::in_boarding_area(local->position)) {
-				bool slow = glm::dot(local->pp.velocity, local->pp.velocity) <= Game::BoardingSpeed * Game::BoardingSpeed;
-				action = slow ? "STAY STILL TO BOARD" : "SLOW DOWN TO BOARD";
-			} else if (local->anchored) action = "ANCHORED | RELEASE S - PUSH OFF";
-			else if (local->holding) action = "RELEASE S - THROW";
-			else if (show_grab_prompt) action = "HOLD S - GRAB";
+		if (local && playing && show_grab_prompt && !local->holding && !local->anchored) {
+			action = "HOLD S - GRAB";
 		}
 		if (!action.empty()) {
 			TextTexture const &prompt = cached_text(action);
@@ -613,18 +597,27 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			}
 		}
 
-		if (game.level != Game::Level::Menu) { //anchor the label above the chamber in world space:
-			TextTexture const &label = text_cache.at("ESCAPE POD");
-			if (label.height > 0) {
-				glm::vec2 anchor = Game::EscapePosition + glm::vec2(0.0f, Game::EscapeHeight * 0.5f + 0.04f);
-				glm::vec4 clip = world_to_clip * glm::vec4(anchor, 0.0f, 1.0f);
-				float pixel_height = 0.04f * scale * float(drawable_size.y) * 0.5f;
-				float text_scale = pixel_height / float(label.height);
-				glm::vec2 position(
-					(clip.x * 0.5f + 0.5f) * float(drawable_size.x) - float(label.width) * text_scale * 0.5f,
-					(0.5f - clip.y * 0.5f) * float(drawable_size.y) - pixel_height
-				);
-				text_renderer.draw_text(label, position, text_scale, glm::vec3(0.6f, 0.85f, 1.0f), drawable_size);
+		if (game.level != Game::Level::Menu) {
+			glm::vec4 clip = world_to_clip * glm::vec4(Game::EscapePosition, 0.0f, 1.0f);
+			glm::vec2 center((clip.x * 0.5f + 0.5f) * float(drawable_size.x), (0.5f - clip.y * 0.5f) * float(drawable_size.y));
+			std::array< char const *, 2 > labels = {"ESCAPE POD", "STOP TO BOARD - 3s"};
+			for (size_t row = 0; row < labels.size(); ++row) {
+				TextTexture const &label = cached_text(labels[row]);
+				if (label.width == 0 || label.height == 0) continue;
+				float height = row == 0 ? 16.0f : 11.0f;
+				float text_scale = std::min(height * ui_scale / float(label.height), UIPodTextWidth * ui_scale / float(label.width));
+				glm::vec2 position = center - glm::vec2(float(label.width) * text_scale * 0.5f, (row == 0 ? UIPodTitleAbove : UIPodSubtitleAbove) * ui_scale);
+				text_renderer.draw_text(label, position, text_scale, row == 0 ? glm::vec3(0.65f, 0.94f, 0.96f) : glm::vec3(0.65f, 0.72f, 0.75f), drawable_size);
+			}
+			bool nearby = local && glm::distance(local->position, Game::EscapePosition) < 0.6f;
+			glm::u8vec4 color = nearby ? glm::u8vec4(255, 238, 180, 255) : glm::u8vec4(150, 143, 115, 255);
+			DrawLines corners(world_to_clip);
+			for (float x : {-1.0f, 1.0f}) {
+				for (float y : {-1.0f, 1.0f}) {
+					glm::vec3 corner(Game::EscapePosition + glm::vec2(x * 0.22f, y * 0.21f), 0.0f);
+					corners.draw(corner, corner - glm::vec3(x * 0.06f, 0.0f, 0.0f), color);
+					corners.draw(corner, corner - glm::vec3(0.0f, y * 0.06f, 0.0f), color);
+				}
 			}
 		}
 
@@ -734,6 +727,14 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
 		if (local && result == 0) {
 			//Screen-space jet HUD.
+			if (game.level != Game::Level::Menu) {
+				TextTexture const &hint = cached_text("[ESC] RETURN TO MENU");
+				if (hint.height > 0) {
+					float text_scale = UIReturnHeight * ui_scale / float(hint.height);
+					text_renderer.draw_text(hint, glm::vec2(UIReturnLeft, UIReturnTop) * ui_scale, text_scale,
+						glm::vec3(0.65f, 0.94f, 0.96f), drawable_size);
+				}
+			}
 			glm::vec2 center = glm::vec2(UIJetLeft, UIJetTop) * ui_scale; // Jet image center: X from left, Y from top. Increase to move right/down.
 			glm::mat4 pixel_to_clip = glm::ortho(0.0f, float(drawable_size.x), float(drawable_size.y), 0.0f);
 			glm::vec3 cyan(0.65f, 0.94f, 0.96f);
@@ -862,7 +863,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				draw_centered(title, -122.0f, 24.0f, glm::vec3(0.65f, 0.94f, 0.96f));
 				draw_centered(leave_selected ? "CONTINUE" : "> CONTINUE", -35.0f, 16.0f, leave_selected ? glm::vec3(0.65f, 0.94f, 0.96f) : glm::vec3(1.0f, 0.93f, 0.7f));
 				draw_centered(leave_selected ? "> RETURN TO MENU" : "RETURN TO MENU", 1.0f, 16.0f, leave_selected ? glm::vec3(1.0f, 0.93f, 0.7f) : glm::vec3(0.65f, 0.94f, 0.96f));
-				draw_centered("UP / DOWN - SELECT    ENTER - CONFIRM    ESC - CONTINUE", 115.0f, 10.0f, glm::vec3(0.75f));
+				draw_centered("UP / DOWN - SELECT    ENTER - CONFIRM", 115.0f, 10.0f, glm::vec3(0.75f));
 			} else {
 				draw_centered(result == 4 ? "ESC - RETURN TO MENU" : "R - RESTART    ESC - RETURN TO MENU", 75.0f, 12.0f, glm::vec3(0.5f));
 			}

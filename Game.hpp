@@ -170,7 +170,7 @@ struct Game {
 	inline static constexpr float PlayerRadius = 0.09f;
 	inline static constexpr float JetImpulse = 0.4f; //per jet; an empty-handed player gains 0.6 units/s
 	inline static constexpr uint8_t JetCount = 3;    //max jets per player
-	inline static constexpr float JetRechargeTime = 5.0f; //seconds to recharge one jet while below JetCount
+	inline static constexpr float JetRechargeTime = 15.0f; //seconds to recharge one jet while below JetCount
 	inline static constexpr float GrabRange = 0.05f; //gap between colliders that still counts as in reach
 	inline static constexpr float ThrowImpulse = 0.3f; //held object gets +J forward, the thrower -J
 	inline static constexpr float GripImpulse = 1.2f;  //a hit harder than this knocks a player off what it anchors to

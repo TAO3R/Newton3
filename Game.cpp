@@ -382,7 +382,8 @@ void Game::update(float elapsed) {
 			}
 
 			if (level == Level::Menu) continue; //Practice has no boarding or winner.
-			bool eligible = in_boarding_area(player.position)
+			Object const *held = held_object(player);
+			bool eligible = (in_boarding_area(player.position) || (held && held->sprite == SpriteId::Chamber))
 				&& glm::dot(player.pp.velocity, player.pp.velocity) <= BoardingSpeed * BoardingSpeed;
 			if (eligible) {
 				float finish = BoardingTime - player.boarding;

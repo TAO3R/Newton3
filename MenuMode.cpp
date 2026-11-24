@@ -317,7 +317,7 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 		bool nearby = !game.players.empty() && glm::distance(game.players.front().position, object.position) < 0.4f;
 		if (nearby && screen == Screen::Play) {
 			std::string hint = "STOP TO SELECT";
-			if (selection_pod == (solo ? 0 : 1)) hint = "SELECTING " + std::to_string(int(std::ceil(Game::BoardingTime - selection_time))) + "s";
+			if (selection_pod == (solo ? 0 : 1)) hint = "SELECTING";
 			draw_label(hint, center + glm::vec2(0.0f, UIPodHintBelow * ui_scale), 12.0f, cyan, UIPodTextWidth * ui_scale);
 		}
 		glm::u8vec4 color = nearby ? glm::u8vec4(255, 238, 180, 255) : glm::u8vec4(150, 143, 115, 255);
@@ -329,6 +329,19 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 				corners.draw(corner, corner - glm::vec3(0.0f, y * 0.06f, 0.0f), color);
 			}
 		}
+	}
+	if (screen == Screen::Play && selection_time > 0.0f) {
+		float width = UIBoardingWidth * ui_scale, height = UIBoardingHeight * ui_scale;
+		int left = int((float(drawable_size.x) - width) * 0.5f);
+		int bottom = int(float(drawable_size.y) - UIBoardingTop * ui_scale - height);
+		glEnable(GL_SCISSOR_TEST);
+		glScissor(left, bottom, int(width), int(height));
+		glClearColor(0.08f, 0.12f, 0.16f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glScissor(left, bottom, int(width * selection_time / Game::BoardingTime), int(height));
+		glClearColor(0.35f, 0.75f, 0.9f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glDisable(GL_SCISSOR_TEST);
 	}
 	if (screen != Screen::Play) {
 		glm::vec2 center = glm::vec2(drawable_size) * 0.5f;
