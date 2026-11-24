@@ -25,6 +25,11 @@ const float UICompassWidth = 150.0f;
 const float UICompassTargetRadius = 50.0f;
 const float UICompassDotRadius = 3.0f;
 
+// Return hint: left/top edges and text height.
+const float UIReturnLeft = 110.0f;
+const float UIReturnTop = 35.0f;
+const float UIReturnHeight = 11.0f;
+
 // Jet image center from left/top; text positions are left/top edges.
 const float UIJetLeft = 160.0f;
 const float UIJetTop = 120.0f;
