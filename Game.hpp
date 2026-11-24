@@ -30,7 +30,8 @@ enum class SpriteId : uint8_t {
 	Probe   = 4,
 	Turbine = 5,
 	Chamber = 6,
-	Count   = 7
+	Wall    = 7,
+	Count   = 8
 };
 
 //used to represent a control input:
@@ -117,7 +118,7 @@ struct Game {
 	uint32_t next_player_id = 1;
 	void start_round();
 	static bool in_boarding_area(glm::vec2 const &position);
-	inline static constexpr float RoundTime = 30.0f;
+	inline static constexpr float RoundTime = 60.0f;
 	inline static constexpr float BoardingTime = 3.0f;
 	inline static constexpr float BoardingSpeed = 0.15f;
 
@@ -153,25 +154,27 @@ struct Game {
 	//the update rate on the server:
 	inline static constexpr float Tick = 1.0f / 60.0f;
 
-	//arena size:
-	inline static constexpr glm::vec2 ArenaMin = glm::vec2(-1.6f, -1.0f);
-	inline static constexpr glm::vec2 ArenaMax = glm::vec2( 1.6f,  1.0f);
+	//Menu bounds stay small; solo and multiplayer share the larger arena.
+	inline static constexpr glm::vec2 MenuMin = glm::vec2(-1.6f, -1.0f);
+	inline static constexpr glm::vec2 MenuMax = glm::vec2( 1.6f,  1.0f);
+	inline static constexpr glm::vec2 ArenaMin = glm::vec2(-4.8f, -1.5f);
+	inline static constexpr glm::vec2 ArenaMax = glm::vec2( 4.8f,  1.5f);
 
 	//escape chamber and boarding area:
-	inline static constexpr glm::vec2 EscapePosition = glm::vec2(-1.35f, 0.0f);
+	inline static constexpr glm::vec2 EscapePosition = glm::vec2(-4.35f, 0.0f);
 	inline static constexpr float EscapeHeight = 0.30f;
-	inline static constexpr glm::vec2 EscapeAreaMin = glm::vec2(-1.27f, -0.18f);
-	inline static constexpr glm::vec2 EscapeAreaMax = glm::vec2(-0.99f, 0.18f);
+	inline static constexpr glm::vec2 EscapeAreaMin = glm::vec2(-4.27f, -0.18f);
+	inline static constexpr glm::vec2 EscapeAreaMax = glm::vec2(-3.99f, 0.18f);
 
 	//player constants:
 	inline static constexpr float PlayerRadius = 0.09f;
 	inline static constexpr float JetImpulse = 0.4f; //per jet; an empty-handed player gains 0.6 units/s
 	inline static constexpr uint8_t JetCount = 3;    //max jets per player
-	inline static constexpr float JetRechargeTime = 3.0f; //seconds to recharge one jet while below JetCount
+	inline static constexpr float JetRechargeTime = 5.0f; //seconds to recharge one jet while below JetCount
 	inline static constexpr float GrabRange = 0.05f; //gap between colliders that still counts as in reach
 	inline static constexpr float ThrowImpulse = 0.3f; //held object gets +J forward, the thrower -J
 	inline static constexpr float GripImpulse = 1.2f;  //a hit harder than this knocks a player off what it anchors to
-	inline static constexpr float PlayerRotSpeed = 1.0f;	// how fast player can rotate (radians / second)
+	inline static constexpr float PlayerRotSpeed = 0.5f;	// how fast player can rotate (radians / second)
 	inline static constexpr float PlayerSpriteFacing = 0.5f * float(M_PI);	// direction the player sprite faces at rotation 0
 
 	//grab range bookkeeping, called by update when an object comes into / leaves a player's reach:

@@ -13,6 +13,10 @@
 #include <vector>
 #include <deque>
 
+//Camera view size in world units; independent of the full level size.
+const float WorldViewWidth = 3.2f;
+const float WorldViewHeight = 2.0f;
+
 // UI layout in pixels at 1280 x 720; scaled with the window. Rebuild after editing.
 // Compass center: increase Right to move left; increase Top to move down.
 const float UICompassRight = 230.0f;

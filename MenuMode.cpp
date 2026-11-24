@@ -284,8 +284,6 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 
 	draw_label("NEWTON³", glm::vec2(0.5f * float(drawable_size.x), UIMenuTitleTop * ui_scale),
 		UIMenuTitleHeight, glm::vec3(1.0f), float(drawable_size.x));
-	draw_label("Every action has a reaction.", glm::vec2(0.5f * float(drawable_size.x), UIMenuSubtitleTop * ui_scale),
-		12.0f, glm::vec3(0.75f), float(drawable_size.x));
 
 	std::array< char const *, 5 > controls_help = {
 		"[A] ROTATE CCW", "[D] ROTATE CW", "[S] GRAB / THROW", "[SPACE] JET", "[R] RESET"

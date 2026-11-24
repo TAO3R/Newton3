@@ -104,14 +104,36 @@ Game::Game(Level level_) : level(level_) {
 	
 	case Game::Level::Solo:
 	case Game::Level::Arena:
-		//props are a bit heavier than a player (1.0); a few start with a slow drift so the room isn't frozen:
-		add_prop(SpriteId::Cart,    glm::vec2( 0.85f,  0.65f), 1.3f, 1.5f, glm::vec2(-0.03f, 0.0f));
-		add_prop(SpriteId::Cart,    glm::vec2( 0.85f, -0.65f), 1.3f, 1.5f, glm::vec2(0.0f));
-		add_prop(SpriteId::Turbine, glm::vec2(-0.35f,  0.45f), 1.8f, 1.4f, glm::vec2(0.0f));
-		add_prop(SpriteId::Turbine, glm::vec2(-0.35f, -0.45f), 1.8f, 1.4f, glm::vec2(0.02f, 0.03f));
-		add_prop(SpriteId::PC,      glm::vec2(-1.15f,  0.75f), 1.5f, 1.3f, glm::vec2(0.0f));
-		add_prop(SpriteId::PC,      glm::vec2(-1.15f, -0.75f), 1.5f, 1.3f, glm::vec2(0.0f));
-		add_prop(SpriteId::Probe,   glm::vec2( 0.35f,  0.0f),  1.4f, 1.2f, glm::vec2(0.0f, -0.04f));
+		//Mirrored supplies: separate starts, first shared hall, split lanes, final shared hall.
+		for (float side : {-1.0f, 1.0f}) {
+			add_prop(SpriteId::Cart,    glm::vec2( 4.14f, side * 0.80f), 1.3f, 1.5f, glm::vec2(0.0f));
+			add_prop(SpriteId::PC,      glm::vec2( 3.25f, side * 1.10f), 1.5f, 1.3f, glm::vec2(0.0f));
+
+			add_prop(SpriteId::Cart,    glm::vec2( 2.45f, side * 0.45f), 1.3f, 1.5f, glm::vec2(0.0f));
+			add_prop(SpriteId::Turbine, glm::vec2( 1.95f, side * 1.05f), 1.8f, 1.4f, glm::vec2(0.0f));
+			add_prop(SpriteId::Probe,   glm::vec2( 1.40f, side * 0.35f), 1.4f, 1.2f, glm::vec2(0.0f));
+			add_prop(SpriteId::PC,      glm::vec2( 0.85f, side * 0.80f), 1.5f, 1.3f, glm::vec2(0.0f));
+
+			add_prop(SpriteId::Cart,    glm::vec2(-0.20f, side * 0.85f), 1.3f, 1.5f, glm::vec2(0.0f));
+			add_prop(SpriteId::PC,      glm::vec2(-1.70f, side * 0.85f), 1.5f, 1.3f, glm::vec2(0.0f));
+
+			add_prop(SpriteId::Cart,    glm::vec2(-4.12f, side * 0.38f), 1.3f, 1.5f, glm::vec2(0.0f));
+			add_prop(SpriteId::PC,      glm::vec2(-3.55f, side * 0.65f), 1.5f, 1.3f, glm::vec2(0.0f));
+			add_prop(SpriteId::Turbine, glm::vec2(-2.85f, side * 1.05f), 1.8f, 1.4f, glm::vec2(0.0f));
+			add_prop(SpriteId::Probe,   glm::vec2(-3.00f, side * 0.25f), 1.4f, 1.2f, glm::vec2(0.0f));
+		}
+		//Solid, grabbable dividers; size includes the visible wall surfaces.
+		for (glm::vec4 layout : {glm::vec4(3.8f, 0.0f, 2.0f, 0.24f), glm::vec4(-1.0f, 0.0f, 2.8f, 0.40f)}) {
+			objects.emplace_back();
+			Object &wall = objects.back();
+			wall.sprite = SpriteId::Wall;
+			wall.position = glm::vec2(layout);
+			wall.width = layout.z;
+			wall.scale.y = layout.w / layout.z;
+			wall.pp.type = PhysicsEngine::MovementType::Static;
+			wall.pp.grabbable = true;
+			wall.pp.collider = PhysicsEngine::BoxCollider{glm::vec2(layout.z, layout.w) * 0.5f};
+		}
 
 		//escape chamber: fixed in place, players can hold on to it (and push off with a throw)
 		objects.emplace_back();
@@ -146,7 +168,7 @@ Player *Game::spawn_player() {
 		
 		case Game::Level::Solo:
 		case Game::Level::Arena:
-			player.position = glm::vec2(1.3f, players.size() == 1 ? 0.75f : -0.75f);		
+			player.position = glm::vec2(4.35f, players.size() == 1 ? 0.80f : -0.80f);
 		}
 	}
 	
@@ -189,7 +211,7 @@ void Game::start_round() {
 			player = Player();
 			player.id = id;
 			player.position = level == Level::Menu ? glm::vec2(-1.25f, 0.0f)
-				: glm::vec2(1.3f, slot++ == 0 ? 0.75f : -0.75f);
+				: glm::vec2(4.35f, slot++ == 0 ? 0.80f : -0.80f);
 			player.pp.collider = PhysicsEngine::CircleCollider{PlayerRadius};
 			player.pp.grip = GripImpulse;
 			player.jets_left = JetCount;
@@ -315,7 +337,7 @@ void Game::update(float elapsed) {
 			int steps = int(std::round(elapsed / PhysicsEngine::physics_dt));
 			for (int s = 0; s < steps; ++s) {
 				PhysicsEngine::step(bodies, grabs, throws);
-				PhysicsEngine::confine(bodies, ArenaMin, ArenaMax);
+				PhysicsEngine::confine(bodies, level == Level::Menu ? MenuMin : ArenaMin, level == Level::Menu ? MenuMax : ArenaMax);
 			}
 		}
 
