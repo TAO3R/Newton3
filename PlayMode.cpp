@@ -443,7 +443,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			Object body;
 			body.sprite = player.sprite;
 			body.position = player.position;
-			body.rotation = player.rotation;
+			body.rotation = player.rotation + 0.5f * float(M_PI);
 			body.width = 2.0f * Game::PlayerRadius;
 			draw_sprite(body, world_to_clip);
 		}

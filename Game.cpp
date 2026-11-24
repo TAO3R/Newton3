@@ -253,12 +253,39 @@ void Game::update(float elapsed) {
 		std::vector< PhysicsEngine::Grab > grabs;
 		std::vector< PhysicsEngine::Throw > throws;
 
+		//the Object behind a player's held body (null when holding nothing):
+		auto held_object = [&](Player const &player) -> Object * {
+			for (auto &object : objects) {
+				if (&object.pp == player.pp.partner.pp) return &object;
+			}
+			return nullptr;
+		};
+
 		for (auto &player : players) {
 			PhysicsEngine::Body body{&player.position, &player.pp};
 
 			{	// rotation
-				if (player.controls.turn_cc.pressed) { player.rotation += PlayerRotSpeed * elapsed; }
-				else if (player.controls.turn_c.pressed) { player.rotation -= PlayerRotSpeed * elapsed; }
+				float turn = 0.0f;
+				if (player.controls.turn_cc.pressed) { turn = PlayerRotSpeed * elapsed; }
+				else if (player.controls.turn_c.pressed) { turn = -PlayerRotSpeed * elapsed; }
+				player.rotation += turn;
+
+				// a held pair turns as one rigid body around its center of mass
+				// (anchored: the anchor is the center and stays put, the player swings around it)
+				PhysicsEngine::Body const &held = player.pp.partner;
+				if (turn != 0.0f && held.pp) {
+					float c = std::cos(turn), s = std::sin(turn);
+					auto turned = [&](glm::vec2 v) { return glm::vec2(c * v.x - s * v.y, s * v.x + c * v.y); };
+					bool movable = held.pp->inv_mass() != 0.0f;
+					glm::vec2 center = movable
+						? (player.pp.mass * player.position + held.pp->mass * *held.position) / (player.pp.mass + held.pp->mass)
+						: *held.position;
+					player.position = center + turned(player.position - center);
+					if (movable) {
+						*held.position = center + turned(*held.position - center);
+						if (Object *object = held_object(player)) object->rotation = player.rotation + player.held_rotation;
+					}
+				}
 			}
 
 			//jet: one push toward the aim point per press, while jets last:
@@ -340,8 +367,20 @@ void Game::update(float elapsed) {
 		float first_finish = round_step + 1.0f;
 		bool tied = false;
 		for (auto &player : players) {
+			bool was_holding = player.holding;
 			player.holding = player.pp.partner.pp != nullptr;
 			player.anchored = player.holding && player.pp.partner.pp->type == PhysicsEngine::MovementType::Static;
+
+			// adjust player rotation
+			if (player.holding && !was_holding)
+			{
+				glm::vec2 to_hold = *player.pp.partner.position - player.position;
+				player.rotation = std::atan2(to_hold.y, to_hold.x) - PlayerSpriteFacing;
+
+				//from here on the held object turns along with the player, keeping this relative rotation:
+				if (Object *object = held_object(player)) player.held_rotation = object->rotation - player.rotation;
+			}
+
 			if (level == Level::Menu) continue; //Practice has no boarding or winner.
 			bool eligible = in_boarding_area(player.position)
 				&& glm::dot(player.pp.velocity, player.pp.velocity) <= BoardingSpeed * BoardingSpeed;
