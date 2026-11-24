@@ -65,6 +65,7 @@ MenuMode::~MenuMode() {
 }
 
 void MenuMode::cancel_connection() {
+	hosted_game.reset();
 	server_lifetime.reset();
 	server_process.reset();
 }
@@ -129,6 +130,7 @@ void MenuMode::connect_room(std::string const &ip) {
 #endif
 	try {
 		auto next = std::make_shared< PlayMode >(ip, "11451");
+		if (screen == Screen::Starting) { hosted_game = next; screen = Screen::HostReady; selected = 0; return; }
 		next->server_lifetime = std::move(server_lifetime);
 		next->room_address = room_address;
 		SDL_StopTextInput(Mode::window);
@@ -150,11 +152,12 @@ void MenuMode::update_connection(float elapsed) {
 		return;
 	}
 #endif
+	if (screen == Screen::HostReady) return;
 	network_time += elapsed;
 	if (network_time < 0.25f) return; //Give the child time to start, without sleeping the menu.
 	network_time = 0.0f;
 	connect_room("127.0.0.1");
-	if (Mode::current.get() == this && ++start_attempts >= 4) {
+	if (screen == Screen::Starting && ++start_attempts >= 4) {
 		cancel_connection(); screen = Screen::Host;
 		panel_message = "Could not connect to the new room. Please try again.";
 	}
@@ -178,7 +181,7 @@ bool MenuMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 	}
 	if (evt.type == SDL_EVENT_KEY_DOWN && !evt.key.repeat) {
 		if (evt.key.key == SDLK_ESCAPE) {
-			if (screen == Screen::Starting) { cancel_connection(); screen = Screen::Host; }
+			if (screen == Screen::Starting || screen == Screen::HostReady) { cancel_connection(); screen = Screen::Multiplayer; }
 			else screen = screen == Screen::Host || screen == Screen::Join ? Screen::Multiplayer : Screen::Play;
 			selected = 0; panel_message.clear();
 			if (screen == Screen::Join) SDL_StartTextInput(Mode::window);
@@ -186,7 +189,7 @@ bool MenuMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		} else if (screen == Screen::Starting) {
 			return true;
 		} else if (screen == Screen::Join && evt.key.key == SDLK_BACKSPACE) {
-			if (replace_ip) join_ip.clear(); else if (!join_ip.empty()) join_ip.pop_back();
+			join_ip.clear();
 			replace_ip = false; panel_message.clear();
 		} else if (screen == Screen::Join && evt.key.key == SDLK_V && (evt.key.mod & SDL_KMOD_CTRL)) {
 			char *clipboard = SDL_GetClipboardText();
@@ -196,7 +199,7 @@ bool MenuMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 				join_ip = value; replace_ip = false; panel_message.clear();
 			} else panel_message = "Paste an IPv4 address without a port.";
 		} else if (evt.key.key == SDLK_UP || evt.key.key == SDLK_DOWN) {
-			int count = screen == Screen::Multiplayer ? 3 : 2;
+			int count = screen == Screen::Multiplayer || screen == Screen::HostReady ? 3 : 2;
 			selected = (selected + (evt.key.key == SDLK_UP ? count - 1 : 1)) % count;
 		} else if (evt.key.key == SDLK_RETURN) {
 			if (screen == Screen::Multiplayer) {
@@ -204,8 +207,19 @@ bool MenuMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 				panel_message.clear();
 				if (screen == Screen::Join) { replace_ip = true; SDL_StartTextInput(Mode::window); }
 			} else if (screen == Screen::Solo) {
-				if (selected == 0) panel_message = "Single-player mode is not available yet.";
+				if (selected == 0) Mode::set_current(std::make_shared< PlayMode >(Game::Level::Solo));
 				else screen = Screen::Play;
+			} else if (screen == Screen::HostReady) {
+				if (selected == 0) {
+					std::string ip = room_address.substr(9);
+					ip = ip.substr(0, ip.find_first_of(", "));
+					panel_message = SDL_SetClipboardText(ip.c_str()) ? "IP COPIED" : "Could not copy IP.";
+				} else if (selected == 1) {
+					hosted_game->server_lifetime = std::move(server_lifetime);
+					hosted_game->room_address = room_address;
+					Mode::set_current(hosted_game);
+					hosted_game.reset();
+				} else { cancel_connection(); screen = Screen::Multiplayer; panel_message.clear(); }
 			} else if (screen == Screen::Host) {
 				if (selected == 0) start_host(); else screen = Screen::Multiplayer;
 			} else if (screen == Screen::Join) {
@@ -221,7 +235,7 @@ bool MenuMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 void MenuMode::update(float elapsed)
 {
 	auto keep_alive = shared_from_this();
-	if (screen == Screen::Starting) { update_connection(elapsed); return; }
+	if (screen == Screen::Starting || screen == Screen::HostReady) { update_connection(elapsed); return; }
 	if (screen != Screen::Play) return;
 	PlayMode::update(elapsed);
 	if (game.players.empty()) return;
@@ -333,20 +347,26 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 			for (size_t i = 0; i < corners.size(); ++i) border.draw(glm::vec3(corners[i], 0.0f), glm::vec3(corners[(i + 1) % 4], 0.0f), glm::u8vec4(166, 240, 245, 255));
 		}
 		bool connecting = screen == Screen::Starting;
-		char const *title = connecting ? "CONNECTING" : screen == Screen::Solo ? "SINGLE PLAYER" : screen == Screen::Host ? "CREATE ROOM" : screen == Screen::Join ? "JOIN ROOM" : "MULTIPLAYER";
+		char const *title = connecting ? "CONNECTING" : screen == Screen::Solo ? "SINGLE PLAYER" : screen == Screen::Host || screen == Screen::HostReady ? "HOST GAME" : screen == Screen::Join ? "JOIN GAME" : "MULTIPLAYER";
 		draw_label(title, glm::vec2(center.x, top_left.y + 28.0f * ui_scale), 24.0f, cyan, size.x - 32.0f * ui_scale);
-		std::array< char const *, 3 > options = {"CREATE ROOM", "JOIN ROOM", "BACK"};
+		std::array< char const *, 3 > options = {"HOST GAME", "JOIN GAME", "BACK"};
 		int count = 3;
 		if (screen == Screen::Solo) { options = {"START", "BACK", ""}; count = 2; }
 		if (screen == Screen::Host) {
-			options = {"CREATE AND ENTER", "BACK", ""}; count = 2;
-			draw_label("Port 11451 - one host per room", glm::vec2(center.x, top_left.y + 76.0f * ui_scale),
-				12.0f, glm::vec3(0.75f), size.x - 32.0f * ui_scale);
+			options = {"START SERVER", "BACK", ""}; count = 2;
+		}
+		if (screen == Screen::HostReady) {
+			options = {"COPY IP", "ENTER GAME", "BACK"}; count = 3;
+			draw_label("Server ready. Share your IP with the other player.", glm::vec2(center.x, top_left.y + 68.0f * ui_scale),
+				12.0f, cyan, size.x - 32.0f * ui_scale);
+			draw_label(room_address, glm::vec2(center.x, top_left.y + 94.0f * ui_scale), 14.0f, cyan, size.x - 32.0f * ui_scale);
 		}
 		if (screen == Screen::Join) {
 			options = {"CONNECT", "BACK", ""}; count = 2;
 			draw_label("IP: " + join_ip + "_", glm::vec2(center.x, top_left.y + 76.0f * ui_scale),
 				16.0f, cyan, size.x - 32.0f * ui_scale);
+			draw_label("BACKSPACE - CLEAR    TYPE IP OR CTRL+V TO PASTE", glm::vec2(center.x, top_left.y + 96.0f * ui_scale),
+				10.0f, glm::vec3(0.75f), size.x - 32.0f * ui_scale);
 		}
 		if (connecting) {
 			count = 0;
@@ -357,7 +377,7 @@ void MenuMode::draw(glm::uvec2 const &drawable_size)
 		}
 		for (int i = 0; i < count; ++i) {
 			std::string text = std::string(i == selected ? "> " : "") + options[size_t(i)];
-			draw_label(text, glm::vec2(center.x, top_left.y + (115.0f + 36.0f * float(i)) * ui_scale),
+			draw_label(text, glm::vec2(center.x, top_left.y + ((screen == Screen::HostReady ? 127.0f : 115.0f) + 36.0f * float(i)) * ui_scale),
 				16.0f, i == selected ? glm::vec3(1.0f, 0.93f, 0.7f) : cyan, size.x - 32.0f * ui_scale);
 		}
 		draw_label(panel_message, glm::vec2(center.x, top_left.y + 220.0f * ui_scale), 12.0f, glm::vec3(0.9f, 0.75f, 0.55f), size.x - 32.0f * ui_scale);

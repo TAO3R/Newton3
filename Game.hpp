@@ -112,12 +112,12 @@ struct Game {
 
 	enum class MatchState : uint8_t { Waiting, Playing, Escaped, Timeout, Disconnected, Draw };
 	MatchState match_state = MatchState::Waiting;
-	float time_left = 90.0f;
+	float time_left = RoundTime;
 	uint32_t winner = 0;
 	uint32_t next_player_id = 1;
 	void start_round();
 	static bool in_boarding_area(glm::vec2 const &position);
-	inline static constexpr float RoundTime = 90.0f;
+	inline static constexpr float RoundTime = 30.0f;
 	inline static constexpr float BoardingTime = 3.0f;
 	inline static constexpr float BoardingSpeed = 0.15f;
 

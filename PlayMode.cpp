@@ -118,7 +118,9 @@ PlayMode::PlayMode(Game::Level level) : game(level), text_renderer(data_path("Ou
 		GL_ERRORS();
 	}
 
-	bgm = Sound::loop(*bgm_sample, 0.4f, 0.0f);   // keep a std::shared_ptr< Sound::PlayingSample > bgm; member
+	static std::weak_ptr< Sound::PlayingSample > shared_bgm;
+	bgm = shared_bgm.lock();
+	if (!bgm) { bgm = Sound::loop(*bgm_sample, 0.4f, 0.0f); shared_bgm = bgm; }
 }
 
 PlayMode::PlayMode(std::string const &host, std::string const &port) : PlayMode(Game::Level::Arena) {
@@ -133,7 +135,6 @@ PlayMode::~PlayMode() {
 	for (auto &entry : text_cache) {
 		text_renderer.destroy_text(entry.second);
 	}
-	if (bgm) bgm->stop();
 }
 
 void PlayMode::set_grab_prompt(glm::vec2 const &player_position, bool visible) {
@@ -142,6 +143,29 @@ void PlayMode::set_grab_prompt(glm::vec2 const &player_position, bool visible) {
 }
 
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
+	if (game.level != Game::Level::Menu) {
+		if (evt.type == SDL_EVENT_KEY_DOWN && !evt.key.repeat && evt.key.key == SDLK_ESCAPE) {
+			confirm_return = !confirm_return;
+			leave_selected = false;
+			controls = Player::Controls();
+			return true;
+		}
+		if (confirm_return) {
+			if (evt.type == SDL_EVENT_KEY_DOWN && !evt.key.repeat) {
+				if (evt.key.key == SDLK_UP || evt.key.key == SDLK_DOWN) leave_selected = !leave_selected;
+				else if (evt.key.key == SDLK_RETURN) {
+					if (leave_selected) {
+						auto keep_alive = shared_from_this();
+						auto menu = std::make_shared< MenuMode >();
+						if (client) client->connection.close();
+						server_lifetime.reset();
+						Mode::set_current(menu);
+					} else confirm_return = false;
+				}
+			}
+			return evt.type != SDL_EVENT_QUIT;
+		}
+	}
 
 	if (evt.type == SDL_EVENT_KEY_DOWN) {
 		if (evt.key.repeat) {
@@ -311,10 +335,6 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	switch (game.level)
 	{
 	case Game::Level::Solo:
-		/* code */
-
-		break;
-
 	case Game::Level::Menu:
 	case Game::Level::Arena:
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -332,6 +352,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		if (game.match_state == Game::MatchState::Timeout) result = 3;
 		if (game.match_state == Game::MatchState::Disconnected) result = 4;
 		if (game.match_state == Game::MatchState::Draw) result = 5;
+		if (confirm_return) result = 6;
 
 		//Reuse text textures; changing timer text is generated only once per second.
 		auto cached_text = [&](std::string const &text) -> TextTexture const & {
@@ -463,7 +484,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				}
 			}
 
-			if (game.level == Game::Level::Arena) { //boarding area outline for checking placement:
+			if (game.level != Game::Level::Menu) { //boarding area outline for checking placement:
 				glm::vec2 min = Game::EscapeAreaMin;
 				glm::vec2 max = Game::EscapeAreaMax;
 				glm::u8vec4 color(0x60, 0xc8, 0xdf, 0xff);
@@ -486,7 +507,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				}
 			}
 
-			if (game.level == Game::Level::Arena) {
+			if (game.level != Game::Level::Menu) {
 				lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
 				lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
 				lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0x48, 0x65, 0x7a, 0xff));
@@ -527,10 +548,10 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		}
 
 		std::string action;
-		if (game.level == Game::Level::Arena && local && playing) {
-			if (game.level == Game::Level::Arena && Game::in_boarding_area(local->position)) {
+		if (game.level != Game::Level::Menu && local && playing) {
+			if (game.level != Game::Level::Menu && Game::in_boarding_area(local->position)) {
 				bool slow = glm::dot(local->pp.velocity, local->pp.velocity) <= Game::BoardingSpeed * Game::BoardingSpeed;
-				action = slow ? "HOLD F - ESCAPE" : "SLOW DOWN TO BOARD";
+				action = slow ? "STAY STILL TO BOARD" : "SLOW DOWN TO BOARD";
 			} else if (local->anchored) action = "ANCHORED | RELEASE S - PUSH OFF";
 			else if (local->holding) action = "RELEASE S - THROW";
 			else if (show_grab_prompt) action = "HOLD S - GRAB";
@@ -555,7 +576,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			}
 		}
 
-		if (game.level == Game::Level::Arena) { //anchor the label above the chamber in world space:
+		if (game.level != Game::Level::Menu) { //anchor the label above the chamber in world space:
 			TextTexture const &label = text_cache.at("ESCAPE POD");
 			if (label.height > 0) {
 				glm::vec2 anchor = Game::EscapePosition + glm::vec2(0.0f, Game::EscapeHeight * 0.5f + 0.04f);
@@ -570,13 +591,13 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			}
 		}
 
-		if (game.level == Game::Level::Arena) { //draw the server-controlled timer above the scene:
+		if (game.level != Game::Level::Menu) { //Solo has a timer; multiplayer has no time limit:
 			int seconds = int(std::ceil(game.time_left));
 			char time_text[16];
 			std::snprintf(time_text, sizeof(time_text), "%02d:%02d", seconds / 60, seconds % 60);
-			TextTexture const &timer = cached_text(time_text);
+			TextTexture const &timer = cached_text(game.level == Game::Level::Solo ? time_text : "FIRST TO ESCAPE WINS");
 			if (timer.height > 0) {
-				float text_scale = 32.0f * ui_scale / float(timer.height); // Timer text height in pixels at 1280x720.
+				float text_scale = (game.level == Game::Level::Solo ? 32.0f : 22.0f) * ui_scale / float(timer.height); // Timer text height in pixels at 1280x720.
 				glm::vec2 position(
 					0.5f * (float(drawable_size.x) - float(timer.width) * text_scale),
 					20.0f * ui_scale // Timer top margin; increase to move down.
@@ -604,7 +625,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			glDisable(GL_SCISSOR_TEST);
 		}
 
-		if (game.level == Game::Level::Arena) { //status and control reminders, outside the arena:
+		if (game.level != Game::Level::Menu) { //status and control reminders, outside the arena:
 			std::string status = game.match_state == Game::MatchState::Waiting
 				? "WAITING FOR SECOND PLAYER" + (room_address.empty() ? std::string() : " | " + room_address) : "REACH THE ESCAPE POD";
 			TextTexture const &label = cached_text(local && playing && local->boarding > 0.0f ? "BOARDING" : status);
@@ -613,7 +634,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				glm::vec2 position(0.5f * (float(drawable_size.x) - float(label.width) * text_scale), 66.0f * ui_scale); // 66 = status text top margin.
 				text_renderer.draw_text(label, position, text_scale, glm::vec3(0.75f), drawable_size);
 			}
-			//Planned keyboard controls; input implementation is handled separately.
+			//Keyboard control reminders.
 			std::array< char const *, 5 > controls_help = {
 				"[A] ROTATE CCW", "[D] ROTATE CW", "[S] GRAB / THROW", "[SPACE] JET", "[R] RESTART"
 			};
@@ -682,7 +703,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				glm::vec2 position(center_x - 0.5f * float(label.width) * text_scale, tops[row] * ui_scale);
 				text_renderer.draw_text(label, position, text_scale, glm::vec3(0.65f, 0.94f, 0.96f), drawable_size);
 			}
-			if (game.level == Game::Level::Arena) {
+			if (game.level != Game::Level::Menu) {
 				std::array< char const *, 2 > hints = {
 					holding ? "RELEASE [S] TO THROW" : "[S] HOLD TO GRAB", holding ? "" : "RELEASE TO THROW"
 				};
@@ -699,11 +720,25 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		}
 
 		if (result != 0) {
-			glClearColor(0.015f, 0.025f, 0.04f, 1.0f);
+			if (result == 6) {
+				glm::vec2 size = glm::vec2(480.0f, 300.0f) * ui_scale;
+				glm::vec2 top_left = (glm::vec2(drawable_size) - size) * 0.5f;
+				glEnable(GL_SCISSOR_TEST);
+				glScissor(int(top_left.x), int(float(drawable_size.y) - top_left.y - size.y), int(size.x), int(size.y));
+			}
+			glClearColor(0.015f, 0.025f, result == 6 ? 0.035f : 0.04f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
+			if (result == 6) {
+				glDisable(GL_SCISSOR_TEST);
+				glm::vec2 size = glm::vec2(480.0f, 300.0f) * ui_scale;
+				glm::vec2 top_left = (glm::vec2(drawable_size) - size) * 0.5f;
+				DrawLines border(glm::ortho(0.0f, float(drawable_size.x), float(drawable_size.y), 0.0f));
+				std::array< glm::vec2, 4 > corners = {top_left, top_left + glm::vec2(size.x, 0.0f), top_left + size, top_left + glm::vec2(0.0f, size.y)};
+				for (size_t i = 0; i < corners.size(); ++i) border.draw(glm::vec3(corners[i], 0.0f), glm::vec3(corners[(i + 1) % 4], 0.0f), glm::u8vec4(166, 240, 245, 255));
+			}
 
 			char const *title = "YOU ESCAPED";
-			char const *message = "You secured the only escape pod.";
+			char const *message = game.level == Game::Level::Solo ? "You reached the escape pod in time." : "You secured the only escape pod.";
 			glm::vec3 color(0.45f, 0.9f, 0.8f);
 			if (result == 2) {
 				title = "LEFT BEHIND";
@@ -711,17 +746,22 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				color = glm::vec3(1.0f, 0.5f, 0.45f);
 			} else if (result == 3) {
 				title = "TIME'S UP";
-				message = "Neither player escaped in time.";
+				message = "You did not escape in time.";
 				color = glm::vec3(1.0f, 0.8f, 0.4f);
 			}
 
 			if (result == 4) {
 				title = "PLAYER DISCONNECTED";
-				message = "Waiting for a second player before restarting.";
+				message = client && !client->connection ? "Connection to the server was lost." : "The other player left the room.";
 				color = glm::vec3(1.0f, 0.8f, 0.4f);
 			} else if (result == 5) {
 				title = "DRAW";
 				message = "Both players boarded at the same time.";
+			}
+
+			if (result == 6) {
+				title = "RETURN TO MENU?";
+				message = "";
 			}
 
 			auto draw_centered = [&](char const *text, float top, float height, glm::vec3 const &text_color) {
@@ -735,9 +775,18 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				text_renderer.draw_text(texture, position, text_scale, text_color, drawable_size);
 			};
 
-			draw_centered(title, -65.0f, 42.0f, color);
-			draw_centered(message, 5.0f, 18.0f, glm::vec3(0.85f));
-			draw_centered(game.players.size() == 2 ? "R - RESTART" : "WAITING FOR SECOND PLAYER", 75.0f, 12.0f, glm::vec3(0.5f));
+			if (result != 6) {
+				draw_centered(title, -65.0f, 42.0f, color);
+				draw_centered(message, 5.0f, 18.0f, glm::vec3(0.85f));
+			}
+			if (result == 6) {
+				draw_centered(title, -122.0f, 24.0f, glm::vec3(0.65f, 0.94f, 0.96f));
+				draw_centered(leave_selected ? "CONTINUE" : "> CONTINUE", -35.0f, 16.0f, leave_selected ? glm::vec3(0.65f, 0.94f, 0.96f) : glm::vec3(1.0f, 0.93f, 0.7f));
+				draw_centered(leave_selected ? "> RETURN TO MENU" : "RETURN TO MENU", 1.0f, 16.0f, leave_selected ? glm::vec3(1.0f, 0.93f, 0.7f) : glm::vec3(0.65f, 0.94f, 0.96f));
+				draw_centered("UP / DOWN - SELECT    ENTER - CONFIRM    ESC - CONTINUE", 115.0f, 10.0f, glm::vec3(0.75f));
+			} else {
+				draw_centered(result == 4 ? "ESC - RETURN TO MENU" : "R - RESTART    ESC - RETURN TO MENU", 75.0f, 12.0f, glm::vec3(0.5f));
+			}
 		}
 
 		GL_ERRORS();
